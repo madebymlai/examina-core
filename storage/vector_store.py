@@ -107,14 +107,14 @@ class VectorStore:
             embeddings.append(embedding)
             documents.append(exercise["text"])
 
-            # Prepare metadata (only JSON-serializable values)
+            # Prepare metadata (only JSON-serializable values, no None)
             metadata = {
-                "topic": exercise.get("topic"),
-                "core_loop_id": exercise.get("core_loop_id"),
-                "difficulty": exercise.get("difficulty"),
+                "topic": exercise.get("topic") or "unknown",
+                "core_loop_id": exercise.get("core_loop_id") or "unknown",
+                "difficulty": exercise.get("difficulty") or "unknown",
                 "has_images": exercise.get("has_images", False),
-                "page_number": exercise.get("page_number"),
-                "source_pdf": exercise.get("source_pdf")
+                "page_number": exercise.get("page_number", 0),
+                "source_pdf": exercise.get("source_pdf") or "unknown"
             }
             metadatas.append(metadata)
 
