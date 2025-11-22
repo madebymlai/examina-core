@@ -227,6 +227,12 @@ class LLMManager:
                 error_msg = "Invalid GROQ_API_KEY. Check your API key."
             elif e.response.status_code == 429:
                 error_msg = "Rate limit exceeded. Wait a moment and try again."
+            elif e.response.status_code == 400:
+                try:
+                    error_detail = e.response.json()
+                    error_msg = f"Groq API error: {error_detail}"
+                except:
+                    error_msg = f"Groq API error: {e} - {e.response.text}"
             return LLMResponse(
                 text="",
                 model=model,
