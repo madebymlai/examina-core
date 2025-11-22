@@ -65,7 +65,9 @@ class ExerciseAnalyzer:
         )
 
         if not response.success:
-            # Return default on error
+            # Log error and return default
+            print(f"[ERROR] LLM failed for exercise: {response.error}")
+            print(f"  Text preview: {exercise_text[:100]}...")
             return AnalysisResult(
                 is_valid_exercise=True,  # Assume valid if we can't analyze
                 is_fragment=False,
@@ -222,6 +224,7 @@ Respond ONLY with valid JSON, no other text.
 
             # Skip invalid exercises (exam instructions, etc.)
             if not analysis.is_valid_exercise:
+                print(f"[DEBUG] Skipping invalid exercise: {exercise['id'][:20]}... ({exercise['text'][:60]}...)")
                 continue
 
             # Should merge with previous?

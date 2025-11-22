@@ -158,7 +158,7 @@ class LLMManager:
     def _groq_generate(self, prompt: str, model: str,
                       system: Optional[str], temperature: float,
                       max_tokens: Optional[int], json_mode: bool) -> LLMResponse:
-        """Generate using Groq API.
+        """Generate using Groq API with automatic retry on rate limits.
 
         Args:
             prompt: User prompt
@@ -171,81 +171,106 @@ class LLMManager:
         Returns:
             LLMResponse
         """
-        try:
-            # Check for API key
-            if not Config.GROQ_API_KEY:
+        import time
+
+        # Check for API key upfront
+        if not Config.GROQ_API_KEY:
+            return LLMResponse(
+                text="",
+                model=model,
+                success=False,
+                error="GROQ_API_KEY not set. Get one at https://console.groq.com"
+            )
+
+        max_retries = 3
+        base_delay = 2  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                url = "https://api.groq.com/openai/v1/chat/completions"
+
+                messages = []
+                if system:
+                    messages.append({"role": "system", "content": system})
+                messages.append({"role": "user", "content": prompt})
+
+                payload = {
+                    "model": model,
+                    "messages": messages,
+                    "temperature": temperature,
+                }
+
+                if max_tokens:
+                    payload["max_tokens"] = max_tokens
+
+                if json_mode:
+                    payload["response_format"] = {"type": "json_object"}
+
+                headers = {
+                    "Authorization": f"Bearer {Config.GROQ_API_KEY}",
+                    "Content-Type": "application/json"
+                }
+
+                response = requests.post(url, json=payload, headers=headers, timeout=60)
+                response.raise_for_status()
+
+                result = response.json()
+                text = result["choices"][0]["message"]["content"]
+
+                return LLMResponse(
+                    text=text,
+                    model=model,
+                    success=True,
+                    metadata={
+                        "usage": result.get("usage"),
+                        "finish_reason": result["choices"][0].get("finish_reason"),
+                    }
+                )
+
+            except requests.exceptions.HTTPError as e:
+                error_msg = f"Groq API error: {e}"
+                if e.response.status_code == 401:
+                    error_msg = "Invalid GROQ_API_KEY. Check your API key."
+                    # Don't retry on auth errors
+                    return LLMResponse(text="", model=model, success=False, error=error_msg)
+                elif e.response.status_code == 429:
+                    # Rate limit - retry with backoff
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)  # Exponential backoff
+                        print(f"  Rate limit hit, retrying in {delay}s... (attempt {attempt+1}/{max_retries})")
+                        time.sleep(delay)
+                        continue
+                    else:
+                        error_msg = "Rate limit exceeded. All retries exhausted."
+                elif e.response.status_code == 400:
+                    try:
+                        error_detail = e.response.json()
+                        error_msg = f"Groq API error: {error_detail}"
+                    except:
+                        error_msg = f"Groq API error: {e} - {e.response.text}"
+
+                # Return error if not retrying
                 return LLMResponse(
                     text="",
                     model=model,
                     success=False,
-                    error="GROQ_API_KEY not set. Get one at https://console.groq.com"
+                    error=error_msg
+                )
+            except Exception as e:
+                return LLMResponse(
+                    text="",
+                    model=model,
+                    success=False,
+                    error=f"Groq error: {str(e)}"
                 )
 
-            url = "https://api.groq.com/openai/v1/chat/completions"
-
-            messages = []
-            if system:
-                messages.append({"role": "system", "content": system})
-            messages.append({"role": "user", "content": prompt})
-
-            payload = {
-                "model": model,
-                "messages": messages,
-                "temperature": temperature,
-            }
-
-            if max_tokens:
-                payload["max_tokens"] = max_tokens
-
-            if json_mode:
-                payload["response_format"] = {"type": "json_object"}
-
-            headers = {
-                "Authorization": f"Bearer {Config.GROQ_API_KEY}",
-                "Content-Type": "application/json"
-            }
-
-            response = requests.post(url, json=payload, headers=headers, timeout=60)
-            response.raise_for_status()
-
-            result = response.json()
-            text = result["choices"][0]["message"]["content"]
-
-            return LLMResponse(
-                text=text,
-                model=model,
-                success=True,
-                metadata={
-                    "usage": result.get("usage"),
-                    "finish_reason": result["choices"][0].get("finish_reason"),
-                }
-            )
-
-        except requests.exceptions.HTTPError as e:
-            error_msg = f"Groq API error: {e}"
-            if e.response.status_code == 401:
-                error_msg = "Invalid GROQ_API_KEY. Check your API key."
-            elif e.response.status_code == 429:
-                error_msg = "Rate limit exceeded. Wait a moment and try again."
-            elif e.response.status_code == 400:
-                try:
-                    error_detail = e.response.json()
-                    error_msg = f"Groq API error: {error_detail}"
-                except:
-                    error_msg = f"Groq API error: {e} - {e.response.text}"
-            return LLMResponse(
-                text="",
-                model=model,
-                success=False,
-                error=error_msg
-            )
-        except Exception as e:
-            return LLMResponse(
-                text="",
-                model=model,
-                success=False,
-                error=f"Groq error: {str(e)}"
-            )
+        # Should never reach here, but just in case
+        return LLMResponse(
+            text="",
+            model=model,
+            success=False,
+            error="Max retries exceeded"
+        )
 
     def embed(self, text: str, model: Optional[str] = None) -> Optional[List[float]]:
         """Generate embeddings for text.
