@@ -42,6 +42,7 @@ class ExerciseSplitter:
         """Initialize exercise splitter."""
         self.patterns = [re.compile(p, re.MULTILINE | re.IGNORECASE)
                         for p in self.EXERCISE_PATTERNS]
+        self.exercise_counter = 0
 
     def split_pdf_content(self, pdf_content: PDFContent, course_code: str) -> List[Exercise]:
         """Split PDF content into individual exercises.
@@ -54,6 +55,7 @@ class ExerciseSplitter:
             List of extracted exercises
         """
         exercises = []
+        self.exercise_counter = 0  # Reset counter for each PDF
 
         # Process each page
         for page in pdf_content.pages:
@@ -195,21 +197,19 @@ class ExerciseSplitter:
         Returns:
             Unique exercise ID
         """
-        # Create a hash from the components
-        components = f"{course_code}_{source_pdf}_{page_number}"
-        if exercise_number:
-            components += f"_{exercise_number}"
+        # Increment counter to ensure uniqueness
+        self.exercise_counter += 1
 
-        # Generate short hash
+        # Create a hash from ALL components including counter for guaranteed uniqueness
+        components = f"{course_code}_{source_pdf}_{page_number}_{exercise_number or 'none'}_{self.exercise_counter}"
+
+        # Generate hash
         hash_obj = hashlib.md5(components.encode())
-        short_hash = hash_obj.hexdigest()[:8]
+        short_hash = hash_obj.hexdigest()[:12]
 
-        # Create readable ID
+        # Create ID: course abbreviation + counter + hash
         course_abbrev = course_code.lower().replace('b', '').replace('0', '')[:6]
-        if exercise_number:
-            return f"{course_abbrev}_{exercise_number.replace('.', '_')}_{short_hash}"
-        else:
-            return f"{course_abbrev}_p{page_number}_{short_hash}"
+        return f"{course_abbrev}_{self.exercise_counter:04d}_{short_hash}"
 
     def merge_split_exercises(self, exercises: List[Exercise]) -> List[Exercise]:
         """Merge exercises that were incorrectly split.
