@@ -238,6 +238,25 @@ class Database:
 
                 print("[INFO] Migration completed: quiz_answers migrated to quiz_attempts")
 
+        # Migration: Mark exercises with core_loop_id as analyzed
+        # (Fixes legacy data where exercises were analyzed but not marked)
+        cursor = self.conn.execute("""
+            SELECT COUNT(*) FROM exercises
+            WHERE core_loop_id IS NOT NULL AND analyzed = 0
+        """)
+        unanalyzed_count = cursor.fetchone()[0]
+
+        if unanalyzed_count > 0:
+            print(f"[INFO] Running migration: Marking {unanalyzed_count} exercises with core_loop_id as analyzed=1")
+
+            self.conn.execute("""
+                UPDATE exercises
+                SET analyzed = 1
+                WHERE core_loop_id IS NOT NULL AND analyzed = 0
+            """)
+
+            print(f"[INFO] Migration completed: {unanalyzed_count} exercises marked as analyzed")
+
     def _create_tables(self):
         """Create all database tables."""
 

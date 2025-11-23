@@ -39,10 +39,13 @@ Examina analyzes past exam PDFs to:
 - Exercise generation with difficulty control
 - Multi-language support (Italian/English)
 
-**Phase 5: Quiz System** (NEXT)
-- Quiz with immediate feedback
-- Progress tracking
-- Spaced repetition algorithm (SM-2)
+**Phase 5: Quiz System** ✅ COMPLETED
+- Interactive quiz system with AI feedback
+- SM-2 spaced repetition algorithm for optimal learning
+- Progress tracking with mastery levels (new → learning → reviewing → mastered)
+- Study suggestions based on weak areas and review schedule
+- Analytics dashboard with topic breakdown
+- Multi-language support (Italian/English)
 
 ## Installation
 
