@@ -340,8 +340,9 @@ class QuizEngine:
         with Database() as db:
             db.conn.execute("""
                 INSERT INTO quiz_sessions
-                (id, course_code, quiz_type, topic_id, core_loop_id, total_questions,
-                 started_at, completed_at, total_correct, score, time_spent)
+                (id, course_code, quiz_type, filter_topic_id, filter_core_loop_id,
+                 total_questions, created_at, completed_at, correct_answers,
+                 score_percentage, filter_difficulty)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 session.session_id,
@@ -354,26 +355,25 @@ class QuizEngine:
                 session.completed_at.isoformat(),
                 session.total_correct,
                 session.score,
-                total_time
+                None  # filter_difficulty
             ))
 
             # Store individual answers
             for question in session.questions:
                 if question.user_answer is not None:
                     db.conn.execute("""
-                        INSERT INTO quiz_answers
-                        (session_id, exercise_id, question_number, student_answer,
-                         is_correct, score, hints_requested, time_spent)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO quiz_attempts
+                        (session_id, exercise_id, user_answer,
+                         correct, time_taken_seconds, hint_used, feedback)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                     """, (
                         session.session_id,
                         question.exercise_id,
-                        question.question_number,
                         question.user_answer,
-                        question.is_correct,
-                        question.score,
-                        question.hints_requested,
-                        question.time_spent
+                        1 if question.is_correct else 0,
+                        int(question.time_spent) if question.time_spent else 0,
+                        1 if question.hints_requested else 0,
+                        question.feedback or ""
                     ))
 
             # Update student progress for each core loop
