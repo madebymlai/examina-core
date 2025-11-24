@@ -52,31 +52,71 @@
 
 **IMPORTANT DESIGN PRINCIPLE:** All new code must be web-ready.
 
+### Repository Strategy
+
+**Two-Repo Architecture:**
+
+#### 📂 Public Repo: `examina` (Current) - Open Source Tool
+**What stays here:**
+- ✅ CLI tool (`cli.py`)
+- ✅ Core analysis logic (`core/`, `storage/`, `models/`, `utils/`)
+- ✅ Local database (SQLite)
+- ✅ Local usage (BYO API keys)
+- ✅ MIT License (portfolio piece)
+- ✅ Documentation and examples
+
+**Target audience:** Nerds, developers, power users, students who want to self-host
+
+**Value proposition:** "Run Examina locally for free with your own API keys"
+
+#### 🔒 Private Repo: `examina-cloud` (Future) - SaaS Platform
+**What goes there:**
+- 🔐 Web app (frontend + backend API)
+- 🔐 Authentication and authorization
+- 🔐 Billing and subscription management
+- 🔐 Multi-user and team features
+- 🔐 Deployment scripts and infrastructure
+- 🔐 Monitoring, logging, and analytics
+- 🔐 Proprietary features and optimizations
+
+**Target audience:** Students who want convenience, non-technical users, institutions
+
+**Value proposition:** "Hosted Examina with accounts, payments, and polished UI"
+
 ### Migration Roadmap (Long-term)
 
-- [ ] **Phase 1: API Layer**
-  - Separate business logic from CLI interface
-  - Create REST API endpoints (FastAPI/Flask)
-  - Authentication and user sessions
-  - Multi-user database schema (user_id foreign keys)
+- [ ] **Phase 1: Core Library Extraction**
+  - Ensure all business logic is in `core/` (framework-agnostic)
+  - Create Python package: `examina-core` (installable via pip)
+  - Version and publish to PyPI (private or public)
+  - Private repo can import: `from examina_core import Analyzer, Tutor`
 
-- [ ] **Phase 2: Frontend**
-  - Web UI for course management
+- [ ] **Phase 2: API Layer** (Private Repo)
+  - FastAPI/Flask REST API
+  - Wrap `examina-core` functions as API endpoints
+  - JWT authentication
+  - Rate limiting (per-user, not per-provider)
+  - Multi-tenancy (user_id isolation)
+
+- [ ] **Phase 3: Frontend** (Private Repo)
+  - React/Vue web UI
+  - File upload and PDF processing
   - Interactive quiz interface
   - Progress dashboards
-  - File upload and PDF processing
+  - Payment integration (Stripe/Paddle)
 
-- [ ] **Phase 3: Database Migration**
-  - User account system
-  - Per-user data isolation
-  - Cloud database (PostgreSQL)
-  - Data migration tools from SQLite
+- [ ] **Phase 4: Database Migration** (Private Repo)
+  - User accounts system
+  - PostgreSQL with user_id foreign keys
+  - Data isolation per user
+  - Migration tools from SQLite (for self-hosted users)
 
-- [ ] **Phase 4: Deployment**
-  - Containerization (Docker)
-  - Cloud hosting (AWS/GCP/Azure)
-  - CI/CD pipeline
-  - Monitoring and logging
+- [ ] **Phase 5: Deployment** (Private Repo)
+  - Docker containers
+  - Kubernetes/AWS ECS
+  - CI/CD pipeline (GitHub Actions)
+  - Monitoring (Sentry, DataDog)
+  - CDN for static assets
 
 ### Web-Ready Design Guidelines
 
