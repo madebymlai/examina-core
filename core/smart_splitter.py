@@ -16,11 +16,27 @@ from config import Config
 
 
 @dataclass
-class DetectedExercise:
-    """Exercise detected by LLM with metadata."""
+class LearningMaterial:
+    """Represents a learning material (theory, worked example, reference)."""
+    id: str
+    title: Optional[str]
+    content: str
+    material_type: str  # 'theory', 'worked_example', 'reference'
+    page_number: int
+    has_images: bool
+    image_data: List[bytes]
+    has_latex: bool
+    latex_content: Optional[str]
+    source_pdf: str
+
+
+@dataclass
+class DetectedContent:
+    """Content detected by LLM with metadata."""
     start_char: int
     end_char: int
-    exercise_type: str  # 'procedural', 'theory', 'proof', 'worked_example', 'practice'
+    content_type: str  # 'theory', 'worked_example', 'practice_exercise'
+    title: Optional[str]
     confidence: float
     has_solution_inline: bool
 
@@ -29,8 +45,11 @@ class DetectedExercise:
 class SplitResult:
     """Result of smart splitting operation."""
     exercises: List[Exercise]
+    learning_materials: List[LearningMaterial]
     pattern_based_count: int
     llm_based_count: int
+    theory_count: int
+    worked_example_count: int
     total_pages: int
     llm_pages_processed: int
     total_cost_estimate: float
