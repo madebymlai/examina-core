@@ -1702,6 +1702,20 @@ def learn(course, loop, lang, depth, no_concepts, adaptive, strategy, provider, 
 
             course_code = found_course['code']
 
+            # Look up core loop by name to get its ID
+            core_loop_row = db.conn.execute("""
+                SELECT cl.id FROM core_loops cl
+                JOIN topics t ON cl.topic_id = t.id
+                WHERE cl.name = ? AND t.course_code = ?
+            """, (loop, course_code)).fetchone()
+
+            if not core_loop_row:
+                console.print(f"[red]Core loop '{loop}' not found in course {course_code}.[/red]\n")
+                console.print("[dim]Use 'examina info --course CODE' to see available core loops.[/dim]\n")
+                return
+
+            core_loop_id = core_loop_row['id']
+
         # Determine provider (adaptive uses PREMIUM, otherwise INTERACTIVE)
         task_type = "premium" if adaptive else "interactive"
         effective_provider = get_effective_provider(provider, profile, task_type)
@@ -1714,7 +1728,7 @@ def learn(course, loop, lang, depth, no_concepts, adaptive, strategy, provider, 
         console.print("🤖 Generating deep explanation with reasoning...\n")
         result = tutor.learn(
             course_code=course_code,
-            core_loop_id=loop,
+            core_loop_id=core_loop_id,
             explain_concepts=not no_concepts,
             depth=depth,
             adaptive=adaptive,
