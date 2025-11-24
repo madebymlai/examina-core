@@ -44,8 +44,8 @@
     - Thread-safe for async/parallel analysis
     - CLI command: `examina pattern-cache` (--stats, --build, --clear)
     - 26.2 exercises/second with cached patterns
-  - **Remaining option for further improvement**:
-    - **Option 4**: Stream processing pipeline - High effort, architectural change
+  - **Remaining option (deferred to web):**
+    - ~~Option 4: Stream processing pipeline~~ → Moved to Phase 2 (Web API Layer)
   - **Current performance**: 26+ ex/s with cache hits, 0.39-0.44 ex/s for new exercises
   - **Recommendation**: Build cache first (`pattern-cache --build`), then analyze
 
@@ -291,11 +291,18 @@
   - Private repo can import: `from examina_core import Analyzer, Tutor`
 
 - [ ] **Phase 2: API Layer** (Private Repo)
-  - FastAPI/Flask REST API
+  - FastAPI REST API
   - Wrap `examina-core` functions as API endpoints
   - JWT authentication
   - Rate limiting (per-user, not per-provider)
   - Multi-tenancy (user_id isolation)
+  - **Background Job System:**
+    - Celery + Redis for async task queue
+    - Background workers for long-running analysis
+    - Job status polling endpoint (`GET /jobs/{id}`)
+    - WebSocket for real-time progress updates
+    - Streaming pipeline (exercise → analyze → dedupe → store)
+    - Retry logic with exponential backoff
 
 - [ ] **Phase 3: Frontend** (Private Repo)
   - React/Vue web UI
