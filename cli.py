@@ -1989,7 +1989,8 @@ def gaps(course, loop, lang):
 @click.option('--dry-run', is_flag=True, help='Show what would be merged without making changes')
 @click.option('--threshold', type=float, default=None, help='Similarity threshold (0.0-1.0, default: 0.85 for semantic, 0.85 for string)')
 @click.option('--bilingual', is_flag=True, help='Enable bilingual translation matching (English/Italian)')
-def deduplicate(course, dry_run, threshold, bilingual):
+@click.option('--clean-orphans', is_flag=True, help='Delete orphaned core loops with no exercises')
+def deduplicate(course, dry_run, threshold, bilingual, clean_orphans):
     """Merge duplicate exercises, topics, and core loops using semantic similarity."""
     from difflib import SequenceMatcher
     import hashlib
@@ -2323,12 +2324,52 @@ def deduplicate(course, dry_run, threshold, bilingual):
                     console.print(f"    Similarity: {sim:.2f}, Reason: {reason}")
                 console.print()
 
-            if not dry_run and (topic_merges or loop_merges):
+            # Clean up orphaned core loops if requested
+            orphan_count = 0
+            if clean_orphans:
+                console.print("[bold]Cleaning Orphaned Core Loops...[/bold]")
+
+                # Find core loops with no exercises
+                cursor = db.conn.execute('''
+                    SELECT cl.id, cl.name, t.name as topic_name
+                    FROM core_loops cl
+                    JOIN topics t ON cl.topic_id = t.id
+                    WHERE t.course_code = ?
+                    AND cl.id NOT IN (
+                        SELECT DISTINCT core_loop_id FROM exercises
+                        WHERE core_loop_id IS NOT NULL
+                    )
+                    AND cl.id NOT IN (
+                        SELECT DISTINCT core_loop_id FROM exercise_core_loops
+                    )
+                    ORDER BY cl.name
+                ''', (course_code,))
+
+                orphans = cursor.fetchall()
+
+                if orphans:
+                    console.print(f"Found {len(orphans)} orphaned core loops:\n")
+                    for loop_id, loop_name, topic_name in orphans:
+                        console.print(f"  • {loop_name} (Topic: {topic_name[:40]}...)")
+
+                    if not dry_run:
+                        for loop_id, loop_name, topic_name in orphans:
+                            db.conn.execute("DELETE FROM core_loops WHERE id = ?", (loop_id,))
+                        db.conn.commit()
+                        orphan_count = len(orphans)
+                        console.print(f"\n[green]✓ Deleted {orphan_count} orphaned core loops[/green]\n")
+                    else:
+                        console.print(f"\n[yellow](Dry run - orphans not deleted)[/yellow]\n")
+                else:
+                    console.print("  No orphaned core loops found\n")
+
+            changes_made = topic_merges or loop_merges or (not dry_run and orphan_count > 0)
+            if not dry_run and changes_made:
                 console.print("[green]Deduplication complete![/green]\n")
             elif dry_run:
                 console.print("[yellow]Dry run complete. Use without --dry-run to apply changes.[/yellow]\n")
             else:
-                console.print("[green]No duplicates found![/green]\n")
+                console.print("[green]No changes needed![/green]\n")
 
     except Exception as e:
         console.print(f"\n[bold red]Error:[/bold red] {e}\n")
