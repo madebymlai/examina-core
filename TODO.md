@@ -48,6 +48,69 @@
 - [ ] Add interactive proof practice mode
 - [ ] Build theory concept dependency visualization
 
+## Future: Web Application Migration 🌐
+
+**IMPORTANT DESIGN PRINCIPLE:** All new code must be web-ready.
+
+### Migration Roadmap (Long-term)
+
+- [ ] **Phase 1: API Layer**
+  - Separate business logic from CLI interface
+  - Create REST API endpoints (FastAPI/Flask)
+  - Authentication and user sessions
+  - Multi-user database schema (user_id foreign keys)
+
+- [ ] **Phase 2: Frontend**
+  - Web UI for course management
+  - Interactive quiz interface
+  - Progress dashboards
+  - File upload and PDF processing
+
+- [ ] **Phase 3: Database Migration**
+  - User account system
+  - Per-user data isolation
+  - Cloud database (PostgreSQL)
+  - Data migration tools from SQLite
+
+- [ ] **Phase 4: Deployment**
+  - Containerization (Docker)
+  - Cloud hosting (AWS/GCP/Azure)
+  - CI/CD pipeline
+  - Monitoring and logging
+
+### Web-Ready Design Guidelines
+
+**All new code MUST follow these principles:**
+
+1. **No Hardcoding** ✓ (already enforced)
+   - No hardcoded course codes, provider names, or configuration
+   - All settings via environment variables or database
+
+2. **Separation of Concerns**
+   - Business logic in `core/` (reusable in web)
+   - CLI-specific code in `cli.py` only
+   - Database operations in `storage/` (abstract layer)
+
+3. **Stateless Operations**
+   - No global state or singletons
+   - Pass dependencies explicitly (dependency injection)
+   - Functions should be pure where possible
+
+4. **Multi-User Ready**
+   - Plan for `user_id` column in tables
+   - Avoid assumptions of single-user
+   - Consider data isolation and permissions
+
+5. **Async-Friendly**
+   - Avoid blocking operations where possible
+   - Consider async/await patterns
+   - Use connection pooling for databases
+
+6. **API-First Thinking**
+   - Functions should accept/return structured data (dicts, dataclasses)
+   - Avoid print() - use proper logging
+   - Return error codes, not sys.exit()
+
 ## Low Priority / Future
 
 - [ ] Language detection for procedures - Automatically detect and merge equivalent procedures

@@ -87,6 +87,40 @@ class Config:
     TOPIC_CLUSTER_MAX = 6  # Maximum subtopics to create when splitting
     TOPIC_SPLITTING_ENABLED = os.getenv("EXAMINA_TOPIC_SPLITTING_ENABLED", "true").lower() == "true"  # Enable automatic splitting
 
+    # Bilingual Translation Detection Settings (NEW - Phase: Generic Bilingual Deduplication)
+    # LLM-based translation detection for deduplication across ANY language pair (IT/EN, ES/EN, FR/EN, etc.)
+    # Replaces hardcoded translation dictionaries with dynamic, language-agnostic detection
+    TRANSLATION_DETECTION_ENABLED = os.getenv("EXAMINA_TRANSLATION_ENABLED", "true").lower() == "true"  # Enable LLM-based translation detection
+    TRANSLATION_DETECTION_THRESHOLD = float(os.getenv("EXAMINA_TRANSLATION_THRESHOLD", "0.70"))  # Min embedding similarity before LLM check
+    PREFERRED_LANGUAGES = ["english", "en"]  # Prefer these languages when merging translations (most universal)
+
+    # Rate Limiting Settings
+    # Provider-agnostic rate limits (configurable per provider)
+    # Set to None for unlimited (e.g., local providers like Ollama)
+    PROVIDER_RATE_LIMITS = {
+        "anthropic": {
+            "requests_per_minute": int(os.getenv("ANTHROPIC_RPM", "50")),
+            "tokens_per_minute": int(os.getenv("ANTHROPIC_TPM", "40000")),
+            "burst_size": 5  # Allow small bursts
+        },
+        "groq": {
+            "requests_per_minute": int(os.getenv("GROQ_RPM", "30")),  # Free tier limit
+            "tokens_per_minute": int(os.getenv("GROQ_TPM", "6000")),  # Free tier limit
+            "burst_size": 3
+        },
+        "ollama": {
+            "requests_per_minute": None,  # No limit (local)
+            "tokens_per_minute": None,
+            "burst_size": 1
+        },
+        "openai": {
+            "requests_per_minute": int(os.getenv("OPENAI_RPM", "60")),
+            "tokens_per_minute": int(os.getenv("OPENAI_TPM", "90000")),
+            "burst_size": 5
+        }
+        # Add more providers as needed - the system is fully generic
+    }
+
     @classmethod
     def ensure_dirs(cls):
         """Create all necessary directories."""

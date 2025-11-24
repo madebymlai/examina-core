@@ -7,11 +7,15 @@ import json
 import requests
 import hashlib
 import time
+import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 
 from config import Config
+from core.rate_limiter import RateLimitTracker
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -60,6 +64,10 @@ class LLMManager:
         # Cache statistics
         self.cache_hits = 0
         self.cache_misses = 0
+
+        # Initialize rate limiter
+        self.rate_limiter = RateLimitTracker(Config.PROVIDER_RATE_LIMITS)
+        logger.debug(f"Initialized LLMManager with provider '{provider}' and rate limiting")
 
     def _generate_cache_key(self, provider: str, model: str, prompt: str,
                            system: Optional[str], temperature: float,
@@ -181,6 +189,26 @@ class LLMManager:
             "hit_rate_percent": round(hit_rate, 2)
         }
 
+    def get_rate_limit_stats(self, provider: Optional[str] = None) -> Dict[str, Any]:
+        """Get rate limit statistics.
+
+        Args:
+            provider: Provider name (defaults to current provider)
+
+        Returns:
+            Dict with rate limit usage stats
+        """
+        provider = provider or self.provider
+        return self.rate_limiter.get_usage_stats(provider)
+
+    def get_all_rate_limit_stats(self) -> Dict[str, Dict[str, Any]]:
+        """Get rate limit statistics for all providers.
+
+        Returns:
+            Dict mapping provider names to their stats
+        """
+        return self.rate_limiter.get_all_stats()
+
     def generate(self, prompt: str, model: Optional[str] = None,
                  system: Optional[str] = None,
                  temperature: float = 0.7,
@@ -201,25 +229,48 @@ class LLMManager:
         """
         model = model or self.fast_model
 
+        # Apply rate limiting before making request
+        wait_time = self.rate_limiter.wait_if_needed(self.provider)
+        if wait_time > 0:
+            print(f"  [RATE LIMIT] Waiting {wait_time:.1f}s for '{self.provider}' (rate limit protection)")
+
+        # Make the API call
         if self.provider == "ollama":
-            return self._ollama_generate(
+            response = self._ollama_generate(
                 prompt, model, system, temperature, max_tokens, json_mode
             )
         elif self.provider == "groq":
-            return self._groq_generate(
+            response = self._groq_generate(
                 prompt, model, system, temperature, max_tokens, json_mode
             )
         elif self.provider == "anthropic":
-            return self._anthropic_generate(
+            response = self._anthropic_generate(
                 prompt, model, system, temperature, max_tokens, json_mode
             )
         else:
-            return LLMResponse(
+            response = LLMResponse(
                 text="",
                 model=model,
                 success=False,
                 error=f"Provider {self.provider} not implemented yet"
             )
+
+        # Record usage if request was successful
+        if response.success:
+            tokens_used = 0
+            if response.metadata:
+                # Extract token count from metadata (provider-specific)
+                usage = response.metadata.get("usage", {})
+                if isinstance(usage, dict):
+                    # Anthropic/Groq format
+                    tokens_used = usage.get("total_tokens", 0)
+                    if tokens_used == 0:
+                        # Try input + output tokens
+                        tokens_used = usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
+
+            self.rate_limiter.record_request(self.provider, tokens_used=tokens_used)
+
+        return response
 
     def _ollama_generate(self, prompt: str, model: str,
                         system: Optional[str], temperature: float,

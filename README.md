@@ -245,6 +245,17 @@ Examina/
 
 Issues and pull requests welcome! See [TODO.md](TODO.md) for areas needing work.
 
+## Privacy & Data
+
+**Your exams stay yours.** Examina analyzes PDFs you upload to build a private knowledge base for you only. We don't share your exams or generated questions with other users.
+
+- 📄 Your PDFs are stored locally in your account
+- 🔒 Content sent to LLM providers only for generating explanations/quizzes
+- 🚫 We don't sell data or train models on your exams
+- 🗑️ Delete your uploads and data anytime
+
+See [PRIVACY.md](PRIVACY.md) for full details.
+
 ## License
 
 MIT License - see LICENSE file for details.

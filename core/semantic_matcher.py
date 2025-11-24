@@ -26,74 +26,23 @@ except ImportError:
     print("[WARNING] sentence-transformers not available. Install with: pip install sentence-transformers")
 
 
-# Translation pairs for common Computer Science terms (English ↔ Italian)
-# Format: (english_term, italian_term)
-TRANSLATION_PAIRS = {
-    # FSM/Automata
-    ("finite state machine", "macchina a stati finiti"),
-    ("finite state machines", "macchine a stati finiti"),  # Plural form
-    ("moore machine", "macchina di moore"),
-    ("mealy machine", "macchina di mealy"),
-    ("minimization", "minimizzazione"),
-    ("state diagram", "diagramma degli stati"),
-    ("state table", "tabella degli stati"),
-    ("transition", "transizione"),
-    ("automaton", "automa"),
-    ("automata", "automi"),
-
-    # Boolean Algebra
-    ("boolean algebra", "algebra booleana"),
-    ("karnaugh map", "mappa di karnaugh"),
-    ("sum of products", "somma di prodotti"),
-    ("product of sums", "prodotto di somme"),
-    ("sop", "sop"),  # Same in both languages
-    ("pos", "pos"),  # Same in both languages
-    ("logic gate", "porta logica"),
-    ("truth table", "tavola di verità"),
-
-    # Circuits
-    ("sequential circuit", "circuito sequenziale"),
-    ("combinational circuit", "circuito combinatorio"),
-    ("flip-flop", "flip-flop"),
-    ("latch", "latch"),
-    ("counter", "contatore"),
-
-    # Design and Analysis
-    ("design", "progettazione"),
-    ("design", "disegno"),
-    ("verification", "verifica"),
-    ("implementation", "implementazione"),
-    ("transformation", "trasformazione"),
-    ("conversion", "conversione"),
-
-    # Performance
-    ("speedup", "accelerazione"),
-    ("throughput", "throughput"),
-    ("latency", "latenza"),
-    ("bandwidth", "banda"),
-
-    # Concurrent Programming
-    ("monitor", "monitor"),
-    ("semaphore", "semaforo"),
-    ("mutex", "mutex"),
-    ("synchronization", "sincronizzazione"),
-    ("deadlock", "deadlock"),
-    ("race condition", "race condition"),
-
-    # Linear Algebra
-    ("gaussian elimination", "eliminazione di gauss"),
-    ("eigenvalue", "autovalore"),
-    ("eigenvector", "autovettore"),
-    ("diagonalization", "diagonalizzazione"),
-    ("matrix", "matrice"),
-    ("vector", "vettore"),
-
-    # General terms
-    ("procedure", "procedura"),
-    ("algorithm", "algoritmo"),
-    ("optimization", "ottimizzazione"),
-    ("analysis", "analisi"),
-}
+# REMOVED: Hardcoded TRANSLATION_PAIRS dictionary
+#
+# Old approach: Hardcoded dictionary with ~68 translation pairs (English ↔ Italian only)
+# Problems:
+# - Only worked for Italian/English pairs
+# - Required manual maintenance for each new course/domain
+# - Didn't scale to other language pairs (Spanish, French, German, etc.)
+# - Violated Examina's "no hardcoding" philosophy
+#
+# New approach: LLM-based translation detection via TranslationDetector
+# Benefits:
+# - Works for ANY language pair (IT/EN, ES/EN, FR/EN, DE/EN, etc.)
+# - Adapts to new courses/domains automatically
+# - No manual dictionary maintenance required
+# - Consistent with Examina's generic, scalable design
+#
+# See: core/translation_detector.py
 
 
 # REMOVED: SEMANTIC_OPPOSITES hardcoded list
@@ -120,25 +69,32 @@ class SimilarityResult:
 class SemanticMatcher:
     """Semantic similarity matcher using embeddings."""
 
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2", use_embeddings: bool = True, llm_manager=None):
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2", use_embeddings: bool = True, llm_manager=None, enable_translation_detection: bool = True):
         """Initialize semantic matcher.
 
         Args:
             model_name: Name of the sentence transformer model to use
             use_embeddings: If False, use string matching fallback
-            llm_manager: Optional LLMManager instance for dynamic opposite detection
+            llm_manager: Optional LLMManager instance for dynamic opposite detection and translation detection
+            enable_translation_detection: If True, use LLM-based translation detection
         """
         self.model_name = model_name
         self.use_embeddings = use_embeddings and SENTENCE_TRANSFORMERS_AVAILABLE
         self.model = None
         self.llm_manager = llm_manager
 
-        # Build translation lookup tables for fast access
-        self._build_translation_tables()
-
         # LLM opposite detection cache (stores results to avoid repeated API calls)
         # Format: {(text1, text2): bool} where bool = True if opposites
         self._opposite_cache = {}
+
+        # Initialize translation detector if LLM available
+        self.translation_detector = None
+        if llm_manager and enable_translation_detection:
+            from core.translation_detector import TranslationDetector
+            self.translation_detector = TranslationDetector(llm_manager=llm_manager)
+            print(f"[INFO] Translation detection enabled (LLM-based)")
+        else:
+            print(f"[INFO] Translation detection disabled")
 
         # Initialize embedding model if requested
         if self.use_embeddings:
@@ -147,6 +103,10 @@ class SemanticMatcher:
                 self.model = SentenceTransformer(model_name)
                 self.enabled = True
                 print(f"[INFO] Semantic matcher initialized with embeddings")
+
+                # Pass embedding model to translation detector
+                if self.translation_detector:
+                    self.translation_detector.embedding_model = self.model
             except Exception as e:
                 print(f"[WARNING] Failed to load semantic model: {e}")
                 print(f"[WARNING] Falling back to string-based matching")
@@ -156,19 +116,8 @@ class SemanticMatcher:
             self.enabled = False
             print(f"[INFO] Semantic matcher initialized without embeddings (string fallback)")
 
-    def _build_translation_tables(self):
-        """Build bidirectional translation lookup tables."""
-        self.en_to_it = {}
-        self.it_to_en = {}
-
-        for en_term, it_term in TRANSLATION_PAIRS:
-            # Normalize to lowercase
-            en_lower = en_term.lower()
-            it_lower = it_term.lower()
-
-            # Build bidirectional mapping
-            self.en_to_it[en_lower] = it_lower
-            self.it_to_en[it_lower] = en_lower
+    # REMOVED: _build_translation_tables() method
+    # No longer needed - using LLM-based TranslationDetector instead
 
     def get_embedding(self, text: str) -> Optional[np.ndarray]:
         """Get embedding for a text.
@@ -245,65 +194,42 @@ class SemanticMatcher:
             from difflib import SequenceMatcher
             return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
 
-    def is_translation(self, text1: str, text2: str) -> bool:
+    def is_translation(self, text1: str, text2: str, min_similarity: float = 0.70) -> bool:
         """
-        Detect if two texts are translations of each other.
+        Detect if two texts are translations of each other (ANY language pair).
 
-        This checks against known translation pairs for computer science terms.
-        Uses a conservative approach: requires multiple translation pairs AND
-        similar text structure to avoid false positives.
+        NEW: Uses LLM-based TranslationDetector instead of hardcoded dictionary.
+        Works for ANY language pair: IT/EN, ES/EN, FR/EN, DE/EN, etc.
 
-        Examples:
-        - "Finite State Machines" ↔ "Macchine a Stati Finiti" → True
-        - "Moore Machine" ↔ "Macchina di Moore" → True
-        - "Mealy Machine" ↔ "Moore Machine" → False
-        - "Implementazione Monitor" ↔ "Progettazione Monitor" → False (different verbs)
+        Examples (ANY language pair):
+        - "Moore Machine Design" ↔ "Progettazione Macchina di Moore" (EN↔IT) → True
+        - "Implementazione Monitor" ↔ "Monitor Implementation" (IT↔EN) → True
+        - "Eliminación Gaussiana" ↔ "Gaussian Elimination" (ES↔EN) → True
+        - "Mealy Machine" ↔ "Moore Machine" (same lang, different concepts) → False
 
         Args:
-            text1: First text
-            text2: Second text
+            text1: First text (any language)
+            text2: Second text (any language)
+            min_similarity: Minimum embedding similarity threshold
 
         Returns:
-            True if texts are known translations
+            True if texts are translations
         """
-        # Normalize texts
-        t1_lower = text1.lower().strip()
-        t2_lower = text2.lower().strip()
+        if not self.translation_detector:
+            # Translation detection disabled - conservative fallback
+            return False
 
-        # Check exact match (same text)
-        if t1_lower == t2_lower:
-            return True
+        try:
+            result = self.translation_detector.are_translations(
+                text1, text2,
+                min_embedding_similarity=min_similarity,
+                use_language_detection=False  # Skip language detection for speed
+            )
+            return result.is_translation
 
-        # Count translation pairs found
-        translation_pairs_found = 0
-        total_unique_words = len(set(t1_lower.split()) | set(t2_lower.split()))
-
-        # Check if either text contains known translation pairs
-        for en_term, it_term in TRANSLATION_PAIRS:
-            # Check if both terms appear (one in each text)
-            has_en_in_t1 = en_term in t1_lower
-            has_it_in_t1 = it_term in t1_lower
-            has_en_in_t2 = en_term in t2_lower
-            has_it_in_t2 = it_term in t2_lower
-
-            # Count translation pair if one has English term and other has Italian term
-            if (has_en_in_t1 and has_it_in_t2) or (has_it_in_t1 and has_en_in_t2):
-                translation_pairs_found += 1
-
-        # Require at least 2 translation pairs to avoid false positives
-        # (e.g., "Implementazione Monitor" vs "Progettazione Monitor" has only 1 pair: monitor)
-        if translation_pairs_found >= 2:
-            return True
-
-        # Single translation pair is OK only if the texts are very short (2-4 words)
-        # and the word counts are similar
-        if translation_pairs_found == 1:
-            t1_words = len(t1_lower.split())
-            t2_words = len(t2_lower.split())
-            if 2 <= t1_words <= 4 and 2 <= t2_words <= 4 and abs(t1_words - t2_words) <= 1:
-                return True
-
-        return False
+        except Exception as e:
+            print(f"[WARNING] Translation detection failed: {e}")
+            return False
 
     def is_inverse_transformation(self, text1: str, text2: str) -> bool:
         """
@@ -647,11 +573,17 @@ Answer:"""
         Returns:
             Dictionary with matcher configuration and stats
         """
-        return {
+        stats = {
             "model_name": self.model_name,
             "use_embeddings": self.use_embeddings,
             "embedding_available": SENTENCE_TRANSFORMERS_AVAILABLE,
-            "translation_pairs_count": len(TRANSLATION_PAIRS),
-            "semantic_opposites_count": len(SEMANTIC_OPPOSITES),
+            "translation_detection_enabled": self.translation_detector is not None,
+            "opposite_cache_size": len(self._opposite_cache),
             "embedding_dimension": self.model.get_sentence_embedding_dimension() if self.model else None,
         }
+
+        # Add translation detector stats if available
+        if self.translation_detector:
+            stats.update(self.translation_detector.get_cache_stats())
+
+        return stats

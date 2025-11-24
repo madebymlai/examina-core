@@ -2136,7 +2136,7 @@ def gaps(course, loop, lang):
 @click.option('--course', '-c', required=True, help='Course code')
 @click.option('--dry-run', is_flag=True, help='Show what would be merged without making changes')
 @click.option('--threshold', type=float, default=None, help='Similarity threshold (0.0-1.0, default: 0.85 for semantic, 0.85 for string)')
-@click.option('--bilingual', is_flag=True, help='Enable bilingual translation matching (English/Italian)')
+@click.option('--bilingual', is_flag=True, help='Enable LLM-based translation matching (works for ANY language pair)')
 @click.option('--clean-orphans', is_flag=True, help='Delete orphaned core loops with no exercises')
 def deduplicate(course, dry_run, threshold, bilingual, clean_orphans):
     """Merge duplicate exercises, topics, and core loops using semantic similarity."""
@@ -2148,16 +2148,24 @@ def deduplicate(course, dry_run, threshold, bilingual, clean_orphans):
         from core.semantic_matcher import SemanticMatcher
         from models.llm_manager import LLMManager
 
-        # Create LLM manager for dynamic opposite detection
+        # Create LLM manager for dynamic opposite detection and translation detection
         llm_provider = Config.LLM_PROVIDER
         llm_manager = LLMManager(provider=llm_provider)
-        console.print(f"[info]LLM provider for opposite detection: {llm_provider}[/info]")
+        console.print(f"[info]LLM provider: {llm_provider}[/info]")
 
         if Config.SEMANTIC_SIMILARITY_ENABLED:
-            semantic_matcher = SemanticMatcher(llm_manager=llm_manager)
+            # Enable translation detection if bilingual flag is set
+            enable_translation = bilingual and getattr(Config, 'TRANSLATION_DETECTION_ENABLED', True)
+            semantic_matcher = SemanticMatcher(
+                llm_manager=llm_manager,
+                enable_translation_detection=enable_translation
+            )
             use_semantic = semantic_matcher.enabled
             if use_semantic:
-                console.print("[info]Using semantic similarity matching with dynamic opposite detection[/info]")
+                features = ["semantic matching", "dynamic opposite detection"]
+                if enable_translation:
+                    features.append("LLM-based translation detection")
+                console.print(f"[info]Using: {', '.join(features)}[/info]")
                 default_threshold = Config.SEMANTIC_SIMILARITY_THRESHOLD
             else:
                 console.print("[yellow]Semantic matcher unavailable, using string similarity[/yellow]")
@@ -2168,8 +2176,8 @@ def deduplicate(course, dry_run, threshold, bilingual, clean_orphans):
             use_semantic = False
             semantic_matcher = None
             default_threshold = Config.CORE_LOOP_SIMILARITY_THRESHOLD
-    except ImportError:
-        console.print("[yellow]SemanticMatcher not available, using string similarity[/yellow]")
+    except ImportError as e:
+        console.print(f"[yellow]SemanticMatcher not available ({e}), using string similarity[/yellow]")
         use_semantic = False
         semantic_matcher = None
         default_threshold = Config.CORE_LOOP_SIMILARITY_THRESHOLD
@@ -2177,31 +2185,13 @@ def deduplicate(course, dry_run, threshold, bilingual, clean_orphans):
     # Use provided threshold or default
     threshold = threshold if threshold is not None else default_threshold
 
-    # Bilingual translation dictionary (English ↔ Italian)
-    bilingual_translations = {
-        'finite state machine': 'macchina a stati finiti',
-        'finite state automata': 'automi a stati finiti',
-        'boolean algebra': 'algebra booleana',
-        'sequential circuit': 'circuito sequenziale',
-        'floating point': 'virgola mobile',
-        'number system': 'sistema di numerazione',
-        'base conversion': 'conversione di base',
-        'mealy machine': 'macchina di mealy',
-        'moore machine': 'macchina di moore',
-        'state minimization': 'minimizzazione degli stati',
-        'linear independence': 'indipendenza lineare',
-        'vector space': 'spazio vettoriale',
-        'eigenvalue': 'autovalore',
-        'eigenvector': 'autovettore',
-        'mutual exclusion': 'mutua esclusione',
-        'deadlock': 'stallo',
-        'producer consumer': 'produttore consumatore',
-    }
+    # REMOVED: Hardcoded bilingual_translations dictionary
+    # Now using LLM-based translation detection in TranslationDetector (see core/translation_detector.py)
 
     console.print(f"\n[bold cyan]Deduplicating {course}...[/bold cyan]")
     console.print(f"[info]Threshold: {threshold:.2f}[/info]")
     if bilingual:
-        console.print(f"[info]Bilingual mode: ENABLED (English/Italian)[/info]")
+        console.print(f"[info]Bilingual mode: ENABLED (works for ANY language pair)[/info]")
     console.print()
 
     if dry_run:
@@ -2271,18 +2261,22 @@ def deduplicate(course, dry_run, threshold, bilingual, clean_orphans):
             topic_skips = []
 
             def is_bilingual_match(name1, name2):
-                """Check if two topic names are bilingual translations."""
+                """Check if two topic names are translations using LLM (ANY language pair)."""
                 if not bilingual:
                     return False, None
 
-                name1_lower = name1.lower()
-                name2_lower = name2.lower()
-
-                # Check both directions
-                for en, it in bilingual_translations.items():
-                    # Check if one contains English and other contains Italian
-                    if (en in name1_lower and it in name2_lower) or (it in name1_lower and en in name2_lower):
-                        return True, f"bilingual_match({en}↔{it})"
+                # Use SemanticMatcher's translation detection (LLM-based)
+                if use_semantic and semantic_matcher and semantic_matcher.translation_detector:
+                    try:
+                        result = semantic_matcher.translation_detector.are_translations(
+                            name1, name2,
+                            min_embedding_similarity=0.70,
+                            use_language_detection=False  # Skip for speed
+                        )
+                        if result.is_translation:
+                            return True, f"translation_detected (confidence: {result.confidence:.2f})"
+                    except Exception as e:
+                        console.print(f"[yellow]Translation detection failed: {e}[/yellow]")
 
                 return False, None
 
@@ -2525,6 +2519,124 @@ def deduplicate(course, dry_run, threshold, bilingual, clean_orphans):
                 console.print("[yellow]Dry run complete. Use without --dry-run to apply changes.[/yellow]\n")
             else:
                 console.print("[green]No changes needed![/green]\n")
+
+    except Exception as e:
+        console.print(f"\n[bold red]Error:[/bold red] {e}\n")
+        import traceback
+        traceback.print_exc()
+        raise click.Abort()
+
+
+@cli.command(name='rate-limits')
+@click.option('--provider', '-p', help='Show limits for specific provider (default: all)')
+@click.option('--reset', is_flag=True, help='Reset rate limit tracking for provider')
+def rate_limits(provider, reset):
+    """View current rate limit usage for LLM API providers."""
+    from models.llm_manager import LLMManager
+    from rich.table import Table
+    from rich.panel import Panel
+
+    try:
+        # Initialize LLM manager to access rate limiter
+        llm = LLMManager(provider=Config.LLM_PROVIDER)
+
+        console.print("\n[bold cyan]API Rate Limit Status[/bold cyan]\n")
+
+        # Handle reset
+        if reset:
+            if provider:
+                llm.rate_limiter.reset(provider)
+                console.print(f"[green]✓ Reset rate limits for '{provider}'[/green]\n")
+            else:
+                llm.rate_limiter.reset_all()
+                console.print(f"[green]✓ Reset rate limits for all providers[/green]\n")
+            return
+
+        # Get stats
+        if provider:
+            # Show single provider
+            stats = llm.get_rate_limit_stats(provider)
+            providers_to_show = {provider: stats}
+        else:
+            # Show all providers
+            providers_to_show = llm.get_all_rate_limit_stats()
+
+        # Display each provider
+        for prov_name, stats in providers_to_show.items():
+            if 'error' in stats:
+                console.print(f"[yellow]Provider '{prov_name}': {stats['error']}[/yellow]\n")
+                continue
+
+            if not stats.get('has_limits'):
+                console.print(f"[bold]{prov_name.title()}[/bold]: [green]No rate limits (local/unlimited)[/green]\n")
+                continue
+
+            # Create provider panel
+            req_stats = stats['requests']
+            token_stats = stats['tokens']
+
+            # Format request stats
+            req_limit = req_stats['limit']
+            req_used = req_stats['used']
+            req_remaining = req_stats['remaining']
+            req_pct = req_stats['percentage']
+
+            # Format token stats
+            token_limit = token_stats['limit']
+            token_used = token_stats['used']
+            token_remaining = token_stats['remaining']
+            token_pct = token_stats['percentage']
+
+            # Choose color based on usage
+            def get_color(percentage):
+                if percentage >= 90:
+                    return "red"
+                elif percentage >= 70:
+                    return "yellow"
+                else:
+                    return "green"
+
+            req_color = get_color(req_pct)
+            token_color = get_color(token_pct)
+
+            # Build panel content
+            content_lines = []
+            content_lines.append(f"[bold]Provider:[/bold] {prov_name}")
+            content_lines.append(f"[bold]Current Provider:[/bold] {'✓ Active' if prov_name == Config.LLM_PROVIDER else '○ Inactive'}")
+            content_lines.append("")
+
+            # Requests section
+            if req_limit:
+                content_lines.append(f"[bold]Requests (per minute):[/bold]")
+                content_lines.append(f"  Used: [{req_color}]{req_used}/{req_limit}[/{req_color}] ({req_pct}%)")
+                content_lines.append(f"  Remaining: {req_remaining}")
+
+            # Tokens section
+            if token_limit:
+                content_lines.append("")
+                content_lines.append(f"[bold]Tokens (per minute):[/bold]")
+                content_lines.append(f"  Used: [{token_color}]{token_used:,}/{token_limit:,}[/{token_color}] ({token_pct}%)")
+                content_lines.append(f"  Remaining: {token_remaining:,}")
+
+            # Time info
+            time_until_reset = stats.get('time_until_reset', 0)
+            if time_until_reset > 0:
+                content_lines.append("")
+                content_lines.append(f"[dim]Time until reset: {time_until_reset:.1f}s[/dim]")
+
+            content = "\n".join(content_lines)
+
+            # Display panel
+            border_color = "red" if req_pct >= 90 or token_pct >= 90 else "yellow" if req_pct >= 70 or token_pct >= 70 else "green"
+            console.print(Panel(content, title=f"📊 {prov_name.title()}", border_style=border_color))
+            console.print()
+
+        # Show helpful tips
+        console.print("[dim]Tips:[/dim]")
+        console.print("[dim]  • Rate limiting is automatic - requests will wait if limits are exceeded[/dim]")
+        console.print("[dim]  • Use --provider <name> to see a specific provider[/dim]")
+        console.print("[dim]  • Use --reset to clear rate limit tracking[/dim]")
+        console.print("[dim]  • Configure limits in .env: GROQ_RPM=30, ANTHROPIC_RPM=50, etc.[/dim]\n")
 
     except Exception as e:
         console.print(f"\n[bold red]Error:[/bold red] {e}\n")
