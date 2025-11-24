@@ -533,6 +533,12 @@ def analyze(course, limit, provider, lang, force, parallel, batch_size):
         llm = LLMManager(provider=provider)
         analyzer = ExerciseAnalyzer(llm, language=lang)
 
+        # Initialize translation detector for language detection
+        from core.translation_detector import TranslationDetector
+        translation_detector = TranslationDetector(llm_manager=llm) if Config.LANGUAGE_DETECTION_ENABLED else None
+        if translation_detector:
+            console.print(f"   ✓ Language detection enabled\n")
+
         # For embeddings, we still need Ollama (Groq/Anthropic don't provide embeddings)
         embed_llm = LLMManager(provider="ollama") if provider in ["groq", "anthropic"] else llm
         vector_store = VectorStore(llm_manager=embed_llm)
@@ -615,11 +621,18 @@ def analyze(course, limit, provider, lang, force, parallel, batch_size):
             # Get topic name mapping from analyzer (for deduplication)
             topic_name_mapping = getattr(analyzer, 'topic_name_mapping', {})
 
-            # Store topics
+            # Store topics (with language detection)
             for topic_name in topics.keys():
-                topic_id = db.add_topic(course_code, topic_name)
+                # Detect language if translation detector is available
+                topic_language = None
+                if translation_detector:
+                    topic_language = translation_detector.detect_language(topic_name)
+                    if topic_language == "unknown":
+                        topic_language = None  # Store NULL instead of "unknown"
 
-            # Store core loops
+                topic_id = db.add_topic(course_code, topic_name, language=topic_language)
+
+            # Store core loops (with language detection)
             for loop_id, loop_data in core_loops.items():
                 # Get topic_id
                 topic_name = loop_data.get('topic')
@@ -633,12 +646,20 @@ def analyze(course, limit, provider, lang, force, parallel, batch_size):
                     topic_id = next((t['id'] for t in topic_rows if t['name'] == canonical_topic_name), None)
 
                     if topic_id:
+                        # Detect language if translation detector is available
+                        loop_language = None
+                        if translation_detector:
+                            loop_language = translation_detector.detect_language(loop_data['name'])
+                            if loop_language == "unknown":
+                                loop_language = None  # Store NULL instead of "unknown"
+
                         db.add_core_loop(
                             loop_id=loop_id,
                             topic_id=topic_id,
                             name=loop_data['name'],
                             procedure=loop_data['procedure'],
-                            description=None
+                            description=None,
+                            language=loop_language
                         )
 
             # Get core loop ID mapping from analyzer (for deduplication)
@@ -2706,6 +2727,181 @@ def separate_solutions(course, dry_run, confidence_threshold):
             console.print(f"\n[yellow]Run without --dry-run to apply changes[/yellow]")
 
         console.print()
+
+    except Exception as e:
+        console.print(f"\n[bold red]Error:[/bold red] {e}\n")
+        import traceback
+        traceback.print_exc()
+        raise click.Abort()
+
+
+@cli.command()
+@click.option('--course', '-c', required=True, help='Course code')
+@click.option('--dry-run', is_flag=True, default=False, help='Preview changes without updating database')
+@click.option('--force', is_flag=True, default=False, help='Re-detect language even if already set')
+def detect_languages(course, dry_run, force):
+    """Detect and store languages for core loops and topics (works for ANY language)."""
+    from core.translation_detector import TranslationDetector
+    from models.llm_manager import LLMManager
+
+    console.print(f"\n[bold cyan]Detecting Languages for {course}...[/bold cyan]\n")
+
+    if dry_run:
+        console.print("[yellow]DRY RUN MODE - No changes will be made[/yellow]\n")
+
+    try:
+        # Find course
+        with Database() as db:
+            all_courses = db.get_all_courses()
+            found_course = None
+            for c in all_courses:
+                if c['code'] == course or c['acronym'] == course:
+                    found_course = c
+                    break
+
+            if not found_course:
+                console.print(f"[red]Course '{course}' not found.[/red]\n")
+                return
+
+            course_code = found_course['code']
+
+        # Initialize LLM and detector
+        console.print("🤖 Initializing language detector...")
+        console.print("[dim]Using LLM-based detection (works for ANY language)[/dim]\n")
+        llm = LLMManager(provider=Config.LLM_PROVIDER)
+        detector = TranslationDetector(llm_manager=llm)
+
+        with Database() as db:
+            # Detect for core loops
+            if force:
+                query = """
+                    SELECT id, name, language FROM core_loops
+                    WHERE topic_id IN (
+                        SELECT id FROM topics WHERE course_code = ?
+                    )
+                """
+            else:
+                query = """
+                    SELECT id, name, language FROM core_loops
+                    WHERE topic_id IN (
+                        SELECT id FROM topics WHERE course_code = ?
+                    ) AND language IS NULL
+                """
+
+            cursor = db.conn.execute(query, (course_code,))
+            loops = cursor.fetchall()
+
+            console.print(f"📝 Detecting languages for {len(loops)} core loops...\n")
+
+            if loops:
+                # Create results table
+                table = Table(title="Core Loop Languages", show_header=True)
+                table.add_column("Core Loop", style="cyan", width=50)
+                table.add_column("Language", style="green", width=15)
+                table.add_column("Action", style="yellow", width=15)
+
+                updated_count = 0
+                for loop_id, name, current_lang in loops:
+                    # Detect language
+                    lang_info = detector.detect_language_with_iso(name)
+
+                    action = "detect"
+                    if current_lang and not force:
+                        action = "skip"
+                    elif current_lang:
+                        action = "re-detect"
+
+                    display_lang = f"{lang_info.name}"
+                    if lang_info.code:
+                        display_lang += f" ({lang_info.code})"
+
+                    # Truncate name for display
+                    display_name = name[:47] + "..." if len(name) > 50 else name
+
+                    table.add_row(display_name, display_lang, action)
+
+                    # Update database
+                    if not dry_run and (force or not current_lang):
+                        db.conn.execute("""
+                            UPDATE core_loops SET language = ? WHERE id = ?
+                        """, (lang_info.name, loop_id))
+                        updated_count += 1
+
+                console.print(table)
+                console.print()
+
+                if not dry_run:
+                    console.print(f"[green]✓ Updated {updated_count} core loops[/green]\n")
+                else:
+                    console.print(f"[yellow]Would update {len(loops)} core loops (use without --dry-run to apply)[/yellow]\n")
+
+            # Detect for topics
+            if force:
+                query = """
+                    SELECT id, name, language FROM topics
+                    WHERE course_code = ?
+                """
+            else:
+                query = """
+                    SELECT id, name, language FROM topics
+                    WHERE course_code = ? AND language IS NULL
+                """
+
+            cursor = db.conn.execute(query, (course_code,))
+            topics = cursor.fetchall()
+
+            if topics:
+                console.print(f"📚 Detecting languages for {len(topics)} topics...\n")
+
+                # Create results table
+                table = Table(title="Topic Languages", show_header=True)
+                table.add_column("Topic", style="cyan", width=50)
+                table.add_column("Language", style="green", width=15)
+                table.add_column("Action", style="yellow", width=15)
+
+                updated_count = 0
+                for topic_id, name, current_lang in topics:
+                    # Detect language
+                    lang_info = detector.detect_language_with_iso(name)
+
+                    action = "detect"
+                    if current_lang and not force:
+                        action = "skip"
+                    elif current_lang:
+                        action = "re-detect"
+
+                    display_lang = f"{lang_info.name}"
+                    if lang_info.code:
+                        display_lang += f" ({lang_info.code})"
+
+                    # Truncate name for display
+                    display_name = name[:47] + "..." if len(name) > 50 else name
+
+                    table.add_row(display_name, display_lang, action)
+
+                    # Update database
+                    if not dry_run and (force or not current_lang):
+                        db.conn.execute("""
+                            UPDATE topics SET language = ? WHERE id = ?
+                        """, (lang_info.name, topic_id))
+                        updated_count += 1
+
+                console.print(table)
+                console.print()
+
+                if not dry_run:
+                    console.print(f"[green]✓ Updated {updated_count} topics[/green]\n")
+                else:
+                    console.print(f"[yellow]Would update {len(topics)} topics (use without --dry-run to apply)[/yellow]\n")
+
+            # Get cache stats
+            stats = detector.get_cache_stats()
+            console.print(f"[dim]Cache: {stats['language_cache_size']} languages, {stats['translation_cache_size']} translations[/dim]")
+
+            if not dry_run:
+                db.conn.commit()
+
+        console.print("\n[bold green]✓ Language detection complete![/bold green]\n")
 
     except Exception as e:
         console.print(f"\n[bold red]Error:[/bold red] {e}\n")

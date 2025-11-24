@@ -94,6 +94,13 @@ class Config:
     TRANSLATION_DETECTION_THRESHOLD = float(os.getenv("EXAMINA_TRANSLATION_THRESHOLD", "0.70"))  # Min embedding similarity before LLM check
     PREFERRED_LANGUAGES = ["english", "en"]  # Prefer these languages when merging translations (most universal)
 
+    # Language Detection Settings (Phase: Automatic Language Detection)
+    # Automatic language detection for procedures and topics
+    # Enables cross-language merging and language-aware search
+    LANGUAGE_DETECTION_ENABLED = os.getenv("EXAMINA_LANGUAGE_DETECTION_ENABLED", "true").lower() == "true"  # Auto-detect during analysis
+    AUTO_MERGE_TRANSLATIONS = os.getenv("EXAMINA_AUTO_MERGE_TRANSLATIONS", "true").lower() == "true"  # Merge cross-language duplicates automatically
+    LANGUAGE_CACHE_TTL = int(os.getenv("EXAMINA_LANGUAGE_CACHE_TTL", "86400"))  # Cache language detection for 24 hours
+
     # Rate Limiting Settings
     # Provider-agnostic rate limits (configurable per provider)
     # Set to None for unlimited (e.g., local providers like Ollama)

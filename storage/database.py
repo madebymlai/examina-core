@@ -410,6 +410,30 @@ class Database:
             """)
             print("[INFO] Migration completed: theory_concepts table created")
 
+        # Phase: Automatic Language Detection - Add language columns
+        cursor = self.conn.execute("PRAGMA table_info(core_loops)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if 'language' not in columns:
+            print("[INFO] Running migration: Adding language column to core_loops table")
+            self.conn.execute("""
+                ALTER TABLE core_loops
+                ADD COLUMN language TEXT DEFAULT NULL
+            """)
+            print("[INFO] Migration completed: language column added to core_loops")
+
+        cursor = self.conn.execute("PRAGMA table_info(topics)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if 'language' not in columns:
+            print("[INFO] Running migration: Adding language column to topics table")
+            self.conn.execute("""
+                ALTER TABLE topics
+                ADD COLUMN language TEXT DEFAULT NULL
+            """)
+            print("[INFO] Migration completed: language column added to topics")
+            print("[INFO] Note: Run 'examina detect-languages --course CODE' to detect languages for existing data")
+
     def _create_tables(self):
         """Create all database tables."""
 
@@ -664,16 +688,22 @@ class Database:
         return [dict(row) for row in cursor.fetchall()]
 
     # Topic operations
-    def add_topic(self, course_code: str, name: str, description: str = None) -> int:
+    def add_topic(self, course_code: str, name: str, description: str = None, language: str = None) -> int:
         """Add a new topic to a course.
+
+        Args:
+            course_code: Course code
+            name: Topic name
+            description: Topic description (optional)
+            language: Language name (lowercase, e.g., "english", "italian") - optional
 
         Returns:
             Topic ID
         """
         cursor = self.conn.execute("""
-            INSERT OR IGNORE INTO topics (course_code, name, description)
-            VALUES (?, ?, ?)
-        """, (course_code, name, description))
+            INSERT OR IGNORE INTO topics (course_code, name, description, language)
+            VALUES (?, ?, ?, ?)
+        """, (course_code, name, description, language))
 
         if cursor.lastrowid == 0:
             # Topic already exists, fetch its ID
@@ -788,7 +818,7 @@ class Database:
 
     # Core loop operations
     def add_core_loop(self, loop_id: str, topic_id: int, name: str,
-                      procedure: List[str], description: str = None) -> str:
+                      procedure: List[str], description: str = None, language: str = None) -> str:
         """Add a new core loop.
 
         Args:
@@ -797,6 +827,7 @@ class Database:
             name: Name of the core loop
             procedure: List of procedure steps
             description: Optional description
+            language: Language name (lowercase, e.g., "english", "italian") - optional
 
         Returns:
             Core loop ID
@@ -804,9 +835,9 @@ class Database:
         procedure_json = json.dumps(procedure)
         self.conn.execute("""
             INSERT OR REPLACE INTO core_loops
-            (id, topic_id, name, description, procedure, updated_at)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        """, (loop_id, topic_id, name, description, procedure_json))
+            (id, topic_id, name, description, procedure, language, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (loop_id, topic_id, name, description, procedure_json, language))
         return loop_id
 
     def get_core_loop(self, loop_id: str) -> Optional[Dict[str, Any]]:

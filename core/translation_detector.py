@@ -26,6 +26,14 @@ import hashlib
 
 
 @dataclass
+class LanguageInfo:
+    """Information about detected language."""
+    name: str  # Language name (lowercase, e.g., "english", "italian", "spanish")
+    code: Optional[str] = None  # ISO 639-1 code (e.g., "en", "it", "es") - optional
+    confidence: float = 1.0  # Confidence in detection (0.0 to 1.0)
+
+
+@dataclass
 class TranslationResult:
     """Result of translation detection."""
     is_translation: bool
@@ -128,6 +136,8 @@ class TranslationDetector:
         Returns:
             Language name/code (e.g., "english", "italian", "spanish", "french")
             Returns "unknown" if detection fails
+
+        Note: For structured result with ISO code, use detect_language_with_iso()
         """
         # Check cache first
         cache_key = text.lower().strip()
@@ -166,6 +176,85 @@ Language:"""
         except Exception as e:
             print(f"[WARNING] Language detection failed: {e}")
             return "unknown"
+
+    def detect_language_with_iso(self, text: str) -> LanguageInfo:
+        """Detect language with ISO code using LLM (generic, works for any language).
+
+        Args:
+            text: Text to analyze
+
+        Returns:
+            LanguageInfo with language name, ISO code, and confidence
+        """
+        # Detect language name first (uses cache)
+        language_name = self.detect_language(text)
+
+        if language_name == "unknown":
+            return LanguageInfo(name="unknown", code=None, confidence=0.0)
+
+        # Get ISO code using LLM (generic, no hardcoding)
+        iso_code = self._get_iso_code(language_name)
+
+        return LanguageInfo(
+            name=language_name,
+            code=iso_code,
+            confidence=1.0
+        )
+
+    def _get_iso_code(self, language_name: str) -> Optional[str]:
+        """Get ISO 639-1 code for a language name using LLM (generic, no hardcoding).
+
+        Args:
+            language_name: Language name (e.g., "english", "italian", "spanish")
+
+        Returns:
+            ISO 639-1 code (e.g., "en", "it", "es") or None if unknown
+        """
+        # Check cache first (avoid repeated API calls)
+        cache_key = f"iso_{language_name}"
+        if cache_key in self._language_cache:
+            return self._language_cache[cache_key]
+
+        prompt = f"""What is the ISO 639-1 code (2-letter code) for the language: {language_name}?
+
+Examples:
+- english → en
+- italian → it
+- spanish → es
+- french → fr
+- german → de
+- portuguese → pt
+- chinese → zh
+- japanese → ja
+- korean → ko
+
+Answer with ONLY the 2-letter ISO code (lowercase).
+
+ISO 639-1 code:"""
+
+        try:
+            response = self.llm.generate(
+                prompt=prompt,
+                system="You are an expert at ISO language codes. Respond with only the 2-letter ISO 639-1 code in lowercase.",
+                temperature=0.0,  # Deterministic
+                max_tokens=5
+            )
+
+            if response.success:
+                iso_code = response.text.strip().lower()
+                # Validate: must be exactly 2 letters
+                if len(iso_code) == 2 and iso_code.isalpha():
+                    # Cache the result
+                    self._language_cache[cache_key] = iso_code
+                    return iso_code
+                else:
+                    return None
+            else:
+                return None
+
+        except Exception as e:
+            print(f"[WARNING] ISO code detection failed: {e}")
+            return None
 
     def are_translations(
         self,
