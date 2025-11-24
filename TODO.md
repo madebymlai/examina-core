@@ -57,6 +57,65 @@
 - [ ] Tune theory detection threshold (2 keywords → 1 keyword)
 - [ ] Build theory concept dependency visualization
 
+### Phase 10 - Learning Materials as First-Class Content 🚧 IN PROGRESS
+
+**Goal:** Lecture notes and slides become first-class learning materials, not forced into exercise format.
+
+**Conceptual Model:**
+- Topics / Core Loops → Abstract concepts ("FSM minimization", "Moore machine design")
+- Learning Materials → Theory sections, worked examples, references from notes/slides
+- Exercises → Practice problems / exam-style questions
+
+**Learning Flow:** Topic → theory → worked example → practice (not just "practice")
+
+**Status:**
+
+- [x] **Database Schema** ✅ (completed 2025-11-24)
+  - `learning_materials` table (id, course_code, material_type, title, content, source_pdf, page_number)
+  - `material_topics` join table (many-to-many: materials ↔ topics)
+  - `material_exercise_links` table (link worked examples to practice exercises)
+  - Database methods: store, link, retrieve materials and relationships
+
+- [ ] **Smart Splitter as Content Classifier** 🚧 NEXT
+  - Update `_build_detection_prompt()` to classify content as:
+    - `theory` - Explanatory sections, definitions, concepts
+    - `worked_example` - Examples with solutions shown
+    - `practice_exercise` - Problems to solve (existing exercises)
+  - Update `_parse_detection_response()` to return `DetectedContent` objects
+  - Update `split_pdf_content()` to return BOTH exercises and learning_materials
+  - Keep pattern-based splitting for structured exams (no regression)
+
+- [ ] **Ingestion Mode: --material-type flag**
+  - Add `--material-type exams|notes` flag to `ingest` command (NOT `--type`, avoid quiz confusion)
+  - For `--material-type exams`:
+    - Default: pattern-based splitting (fast, free)
+    - Optional: `--smart-split` for edge cases
+  - For `--material-type notes`:
+    - Default: smart splitting enabled
+    - Populate learning_materials (theory + worked examples) + exercises (practice)
+  - Update ingestion to store learning_materials in database via new methods
+
+- [ ] **Topic-Aware Material Linker**
+  - Enhance analyzer to detect topics for learning materials (like exercises)
+  - Call `db.link_material_to_topic()` during analysis
+  - Link worked examples to similar exercises via `db.link_material_to_exercise()`
+  - Use semantic matching to find related content
+
+- [ ] **Tutor: Theory → Worked Example → Practice Flow**
+  - Update `core/tutor.py` `learn()` method:
+    - When learning a topic/core loop:
+      1. Fetch and show theory materials (`db.get_learning_materials_by_topic(type='theory')`)
+      2. Show worked examples (`db.get_learning_materials_by_topic(type='worked_example')`)
+      3. Then show practice exercises (existing behavior)
+  - Implement "explain → show → do" pattern
+  - Link worked examples to similar exercises as hints
+
+**Design Constraints:**
+- ✅ No regression on existing exercise-based features (analysis, quiz, spaced repetition)
+- ✅ Default behavior for structured exams remains fast (pattern-based)
+- ✅ Smart splitting and learning materials are additive enhancements
+- ✅ Many-to-many relationships (materials ↔ topics, materials ↔ exercises)
+
 ## Future: Web Application Migration 🌐
 
 **IMPORTANT DESIGN PRINCIPLE:** All new code must be web-ready.
