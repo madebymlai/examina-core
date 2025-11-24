@@ -72,6 +72,13 @@ Examina works with **any course material containing problems and exercises**:
 
 **The engine learns from structure, not source.** Past exams are ideal but not required.
 
+**Best Results With:**
+- Clearly numbered exercises ("Exercise 1", "Problem 2", "1.", "2)")
+- Structured problem sets with consistent formatting
+- Mixed language support (Italian, English, Spanish, French, etc.)
+
+**Coming Soon:** Advanced splitting for unstructured lecture notes and embedded examples.
+
 ## Key Features
 
 ### 🎯 Smart Analysis

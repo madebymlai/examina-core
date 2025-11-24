@@ -101,6 +101,14 @@ class Config:
     AUTO_MERGE_TRANSLATIONS = os.getenv("EXAMINA_AUTO_MERGE_TRANSLATIONS", "true").lower() == "true"  # Merge cross-language duplicates automatically
     LANGUAGE_CACHE_TTL = int(os.getenv("EXAMINA_LANGUAGE_CACHE_TTL", "86400"))  # Cache language detection for 24 hours
 
+    # Smart Splitting Settings (Phase: Enhanced Exercise Splitting)
+    # LLM-based exercise detection for unstructured materials (lecture notes, embedded examples)
+    # Complements pattern-based splitting with AI detection for edge cases
+    SMART_SPLIT_ENABLED = os.getenv("EXAMINA_SMART_SPLIT_ENABLED", "false").lower() == "true"  # Enable LLM-based splitting (opt-in via --smart-split flag)
+    SMART_SPLIT_CONFIDENCE_THRESHOLD = float(os.getenv("EXAMINA_SMART_SPLIT_THRESHOLD", "0.7"))  # Min confidence for detected exercises
+    SMART_SPLIT_MAX_PAGES = int(os.getenv("EXAMINA_SMART_SPLIT_MAX_PAGES", "50"))  # Cost control: max pages to process with LLM
+    SMART_SPLIT_CACHE_ENABLED = os.getenv("EXAMINA_SMART_SPLIT_CACHE", "true").lower() == "true"  # Cache LLM detection results
+
     # Rate Limiting Settings
     # Provider-agnostic rate limits (configurable per provider)
     # Set to None for unlimited (e.g., local providers like Ollama)

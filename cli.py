@@ -333,8 +333,12 @@ def search(course, tag, text, multi_only, limit):
 @click.option('--course', '-c', required=True, help='Course code (e.g., B006802 or ADE)')
 @click.option('--zip', '-z', 'zip_file', required=True, type=click.Path(exists=True),
               help='Path to ZIP file containing exam PDFs')
-def ingest(course, zip_file):
-    """Ingest exam PDFs for a course."""
+@click.option('--smart-split', is_flag=True, default=False,
+              help='Use LLM-based splitting for unstructured materials (lecture notes, embedded examples). Costs API tokens.')
+@click.option('--provider', type=click.Choice(['anthropic', 'groq', 'ollama', 'openai']),
+              default=Config.LLM_PROVIDER, help='LLM provider for smart splitting')
+def ingest(course, zip_file, smart_split, provider):
+    """Ingest course materials (exams, homework, problem sets, lecture notes) for a course."""
     from tqdm import tqdm
 
     console.print(f"\n[bold cyan]Ingesting exams for {course}...[/bold cyan]\n")
@@ -360,7 +364,22 @@ def ingest(course, zip_file):
         # Initialize components
         file_mgr = FileManager()
         pdf_processor = PDFProcessor()
-        exercise_splitter = ExerciseSplitter()
+
+        # Choose splitter based on --smart-split flag
+        if smart_split:
+            from core.smart_splitter import SmartExerciseSplitter
+            from models.llm_manager import LLMManager
+
+            console.print(f"[cyan]🤖 Smart splitting enabled with {provider}[/cyan]")
+            console.print("[dim]   LLM-based detection for unstructured materials[/dim]\n")
+
+            llm = LLMManager(provider=provider)
+            exercise_splitter = SmartExerciseSplitter(
+                llm_manager=llm,
+                enable_smart_detection=True
+            )
+        else:
+            exercise_splitter = ExerciseSplitter()
 
         # Extract PDFs from ZIP
         console.print("📦 Extracting ZIP file...")
@@ -394,11 +413,28 @@ def ingest(course, zip_file):
                 console.print(f"   ✓ Extracted {pdf_content.total_pages} pages")
 
                 # Split into exercises
-                exercises = exercise_splitter.split_pdf_content(pdf_content, course_code)
+                if smart_split:
+                    # SmartExerciseSplitter returns SplitResult
+                    split_result = exercise_splitter.split_pdf_content(pdf_content, course_code)
+                    exercises = split_result.exercises
+
+                    # Show smart splitting stats
+                    if split_result.llm_based_count > 0:
+                        console.print(f"   ✓ Found {len(exercises)} exercise(s) "
+                                    f"(pattern: {split_result.pattern_based_count}, "
+                                    f"LLM: {split_result.llm_based_count})")
+                        console.print(f"   [dim]LLM processed {split_result.llm_pages_processed}/{split_result.total_pages} pages "
+                                    f"(est. cost: ${split_result.total_cost_estimate:.4f})[/dim]")
+                    else:
+                        console.print(f"   ✓ Found {len(exercises)} exercise(s) (pattern-based)")
+                else:
+                    # Regular ExerciseSplitter returns List[Exercise]
+                    exercises = exercise_splitter.split_pdf_content(pdf_content, course_code)
 
                 # Filter valid exercises
                 valid_exercises = [ex for ex in exercises if exercise_splitter.validate_exercise(ex)]
-                console.print(f"   ✓ Found {len(valid_exercises)} exercise(s)")
+                if not smart_split or (smart_split and len(valid_exercises) != len(exercises)):
+                    console.print(f"   ✓ {len(valid_exercises)} valid exercise(s) after filtering")
 
                 # Store exercises in database
                 with Database() as db:
@@ -2902,6 +2938,94 @@ def detect_languages(course, dry_run, force):
                 db.conn.commit()
 
         console.print("\n[bold green]✓ Language detection complete![/bold green]\n")
+
+    except Exception as e:
+        console.print(f"\n[bold red]Error:[/bold red] {e}\n")
+        import traceback
+        traceback.print_exc()
+        raise click.Abort()
+
+
+@cli.command(name='concept-graph')
+@click.option('--course', '-c', required=True, help='Course code')
+@click.option('--format', type=click.Choice(['ascii', 'mermaid', 'json']), default='ascii',
+              help='Output format (default: ascii)')
+@click.option('--export', type=click.Path(), help='Export to file')
+@click.option('--concept', help='Show learning path to specific concept')
+@click.option('--provider', type=click.Choice(['anthropic', 'openai', 'groq', 'ollama']),
+              default=Config.LLM_PROVIDER, help=f'LLM provider (default: {Config.LLM_PROVIDER})')
+def concept_graph(course, format, export, concept, provider):
+    """Visualize theory concept dependencies and learning order."""
+    try:
+        from core.concept_graph import ConceptGraphBuilder
+        from core.concept_visualizer import ConceptVisualizer
+        from models.llm_manager import LLMManager
+
+        console.print(f"\n[bold cyan]Building Concept Graph for {course}[/bold cyan]\n")
+
+        # Initialize LLM and builder
+        llm = LLMManager(provider=provider)
+        builder = ConceptGraphBuilder(llm_manager=llm)
+
+        # Build graph
+        console.print("📊 Analyzing theory exercises...")
+        graph = builder.build_from_course(course)
+
+        if not graph.concepts:
+            console.print("[yellow]No theory concepts found in this course.[/yellow]")
+            console.print("Theory concepts are extracted from exercises marked as 'theory', 'proof', or 'hybrid'.")
+            console.print("\nTip: Run 'examina analyze --course {} --reanalyze' to detect theory exercises.".format(course))
+            return
+
+        console.print(f"[green]✓ Found {len(graph.concepts)} concepts with {len(graph.edges)} dependencies[/green]\n")
+
+        # Check for cycles
+        cycles = graph.detect_cycles()
+        if cycles:
+            console.print("[red]⚠ Warning: Cycles detected in dependency graph![/red]")
+            for cycle in cycles:
+                concept_names = [graph.concepts[cid].name for cid in cycle]
+                console.print(f"  Cycle: {' → '.join(concept_names)}")
+            console.print()
+
+        # Visualize
+        visualizer = ConceptVisualizer()
+
+        if concept:
+            # Show learning path to specific concept
+            output = visualizer.render_learning_path(graph, concept)
+        elif format == 'ascii':
+            output = visualizer.render_ascii(graph)
+        elif format == 'mermaid':
+            output = visualizer.render_mermaid(graph)
+        else:  # json
+            output = visualizer.export_json(graph)
+
+        if export:
+            with open(export, 'w') as f:
+                f.write(output)
+            console.print(f"[green]✓ Exported to {export}[/green]")
+        else:
+            console.print(output)
+
+        # Show summary
+        if not concept:
+            console.print("\n[bold]Learning Order Summary:[/bold]")
+            learning_order = graph.topological_sort()
+            if learning_order:
+                foundation_concepts = [cid for cid in learning_order if not graph.get_prerequisites(cid)]
+                console.print(f"  • Foundation concepts (start here): {len(foundation_concepts)}")
+                console.print(f"  • Advanced concepts (require prerequisites): {len(learning_order) - len(foundation_concepts)}")
+
+                if foundation_concepts:
+                    console.print("\n[bold]Recommended Starting Points:[/bold]")
+                    for cid in foundation_concepts[:5]:  # Show first 5
+                        c = graph.concepts[cid]
+                        console.print(f"  • {c.name} ({c.exercise_count} exercises)")
+                    if len(foundation_concepts) > 5:
+                        console.print(f"  ... and {len(foundation_concepts) - 5} more")
+
+        console.print()
 
     except Exception as e:
         console.print(f"\n[bold red]Error:[/bold red] {e}\n")
