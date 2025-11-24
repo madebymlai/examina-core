@@ -2,7 +2,14 @@
 """Test confidence threshold filtering with artificially high threshold to demonstrate filtering."""
 
 import os
-os.environ["GROQ_API_KEY"] = "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"
+import sys
+
+# Verify GROQ_API_KEY is set
+if "GROQ_API_KEY" not in os.environ:
+    print("Error: GROQ_API_KEY environment variable not set")
+    print("Please set it: export GROQ_API_KEY=your_key_here")
+    sys.exit(1)
+
 # Set a high threshold to test filtering
 os.environ["EXAMINA_MIN_CONFIDENCE"] = "0.85"
 
