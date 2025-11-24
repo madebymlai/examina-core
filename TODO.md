@@ -168,6 +168,12 @@
 - Junction table queries perform efficiently
 - Backward compatibility maintained with legacy single-procedure exercises
 
+**Future Improvements:**
+- [ ] Bilingual procedure deduplication - Merge duplicate procedures across languages (e.g., "Base Conversion" and "Conversione di Base")
+- [ ] Language detection for procedures - Automatically detect and merge equivalent procedures in different languages
+- [ ] Strictly monolingual analysis mode - Option to ensure analysis extracts procedures in only one language
+- [ ] Cross-language procedure similarity - Use embeddings to match semantically equivalent procedures across Italian/English
+
 ## Phase 7 - Enhanced Learning System 🚧 IN PROGRESS
 
 **Problem:** Current `learn` command assumes prior knowledge and doesn't deeply explain WHY and HOW.
