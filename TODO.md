@@ -36,6 +36,14 @@
   - Thread-safe with persistent caching
   - Works for ALL providers (anthropic, groq, ollama, openai, future)
   - CLI command: `examina rate-limits`
+- [ ] **Analysis Performance Optimization** - Speed up bulk analysis (currently 0.5 ex/s)
+  - Current: 60s for 27 exercises (2.2s per exercise)
+  - Bottleneck: Sequential LLM calls within batches (Python GIL limitation)
+  - **Option 1**: Increase batch size (10 → 30) - Low effort, moderate gain
+  - **Option 2**: Async/await with asyncio - Medium effort, high gain (3-5x faster)
+  - **Option 3**: Procedure pattern caching - High effort, very high gain
+  - **Option 4**: Stream processing pipeline - High effort, architectural change
+  - Target: 2-3 ex/s (60-90s for 100 exercises)
 
 ### Phase 6 - Multi-Core-Loop Support
 - [x] **Clean up orphaned core loops** - ✅ Added `--clean-orphans` flag to deduplicate command
@@ -49,7 +57,12 @@
   - ISO 639-1 code mapping
   - Database columns: `language` in core_loops and topics
   - CLI command: `examina detect-languages`
-- [ ] Strictly monolingual analysis mode - Ensure procedures extracted in only one language
+- [x] **Strictly monolingual analysis mode** ✅ (completed 2025-11-24)
+  - Added `--monolingual` flag to analyze command
+  - Automatic primary language detection (from first 5 exercises)
+  - LLM-based procedure translation to primary language
+  - Prevents cross-language duplicate procedures
+  - All tests pass (4/4), fully documented
 
 ### Phase 9 - Theory & Proof Support
 - [x] **Interactive proof practice mode** ✅ - Already implemented (`prove` command)
