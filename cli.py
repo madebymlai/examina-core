@@ -1193,7 +1193,7 @@ def learn(course, loop, lang, depth, no_concepts, adaptive, strategy):
             course_code = found_course['code']
 
         # Initialize tutor with enhanced learning
-        llm = LLMManager(provider="anthropic")
+        llm = LLMManager(provider=Config.LLM_PROVIDER)
         tutor = Tutor(llm, language=lang)
 
         # Get enhanced explanation

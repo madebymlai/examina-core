@@ -132,6 +132,22 @@
 - ✅ Smart splitting and learning materials are additive enhancements
 - ✅ Many-to-many relationships (materials ↔ topics, materials ↔ exercises)
 
+**Testing & Validation:**
+- [x] **End-to-End Testing** ✅ (completed 2025-11-24)
+  - Tested with 3-page Italian lecture notes (Appunti-AE-3pages.pdf)
+  - Successfully extracted 3 exercises, 20 materials (19 theory, 1 worked example)
+  - Verified Theory → LLM Explanation flow in learn command
+  - All design principles validated in production use
+  - See PHASE10_TESTING.md for detailed test results
+
+**Remaining Cleanup:**
+- [ ] **Service Interface for SaaS Readiness**
+  - Refactor hardcoded providers in CLI (cli.py:1196) and Tutor (tutor.py:37)
+  - Add consistent `--provider` flag to all commands (learn, prove, practice, etc.)
+  - Create stateless `ExaminaService` class wrapping core operations
+  - Document service interface for future web layer integration
+  - Goal: Enable thin web layer that can instantiate services with user preferences
+
 ## Future: Web Application Migration 🌐
 
 **IMPORTANT DESIGN PRINCIPLE:** All new code must be web-ready.

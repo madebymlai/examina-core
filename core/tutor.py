@@ -34,7 +34,7 @@ class Tutor:
             llm_manager: LLM manager instance
             language: Output language ("en" or "it")
         """
-        self.llm = llm_manager or LLMManager(provider="anthropic")
+        self.llm = llm_manager or LLMManager(provider=Config.LLM_PROVIDER)
         self.language = language
         self.concept_explainer = ConceptExplainer(llm_manager=self.llm, language=language)
         self.strategy_manager = StudyStrategyManager(language=language)
