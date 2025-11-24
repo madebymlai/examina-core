@@ -5,6 +5,29 @@ All notable changes and completed phases are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2025-11-24
+
+### Added
+- **`--clean-orphans` flag** - Automatically delete orphaned core loops with no exercises
+- Shows preview in dry-run mode before deletion
+
+### Note
+- Investigated Mealy/Moore mis-categorization in ADE course
+- Found 1 Moore exercise incorrectly linked to "Mealy Machine Design and Minimization"
+- Root cause: LLM analysis error during original ingestion
+- Recommended solution: Re-analyze course with `--force` flag
+
+## [0.9.2] - 2025-11-24
+
+### Added
+- **Generic opposite affix detection** - Detects prefixes a-, non-, in-, un-, de-, anti-, dis-, il-, im-, ir-
+- Works for ANY domain without hardcoding
+
+### Changed
+- **Reduced hardcoded pairs from 12 → 4** (67% reduction)
+- Removed hardcoded pairs that embeddings handle naturally (mealy/moore, sequential/combinational, etc.)
+- Kept only pairs with >85% similarity that would incorrectly merge (SoP/PoS, NFA/DFA)
+
 ## [0.9.1] - 2025-11-24
 
 ### Fixed

@@ -29,11 +29,8 @@
 - [ ] Provider-agnostic rate limiting tracker
 
 ### Phase 6 - Multi-Core-Loop Support
-- [ ] **Clean up orphaned core loops** - Remove core loops not linked to any exercises
-  - ADE: 20 orphaned (out of 32 total)
-  - AL: 36 orphaned (out of 47 total)
-  - PC: 10 orphaned (out of 22 total)
-  - Add `--clean-orphans` flag to deduplicate command
+- [x] **Clean up orphaned core loops** - ✅ Added `--clean-orphans` flag to deduplicate command
+- [ ] **Fix mis-categorized exercises** - Re-analyze courses to fix LLM analysis errors (e.g., Mealy exercises linked to Moore core loops)
 - [ ] Bilingual procedure deduplication - Merge duplicate procedures across languages
 - [ ] Strictly monolingual analysis mode - Ensure procedures extracted in only one language
 - [ ] Cross-language procedure similarity - Use embeddings to match equivalent procedures
