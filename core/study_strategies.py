@@ -33,7 +33,8 @@ class StudyStrategyManager:
         # Initialize LLM manager
         try:
             from models.llm_manager import LLMManager
-            self.llm_manager = LLMManager()
+            from config import Config
+            self.llm_manager = LLMManager(provider=Config.LLM_PROVIDER)
         except Exception as e:
             print(f"[ERROR] Could not initialize LLM manager: {e}")
             raise RuntimeError("LLM manager required for strategy generation")
@@ -104,6 +105,11 @@ class StudyStrategyManager:
 
             prompt = self._build_strategy_generation_prompt(core_loop_name, difficulty)
             response = self.llm_manager.generate(prompt, temperature=0.7)
+
+            # Check if LLM call succeeded
+            if not response.success:
+                print(f"[ERROR] LLM generation failed: {response.error}")
+                return None
 
             # Parse response into strategy structure
             strategy = self._parse_llm_strategy(response.text, core_loop_name)

@@ -19,7 +19,7 @@ class Config:
     CACHE_PATH = DATA_DIR / "cache"
 
     # LLM Settings
-    LLM_PROVIDER = os.getenv("EXAMINA_LLM_PROVIDER", "ollama")
+    LLM_PROVIDER = os.getenv("EXAMINA_LLM_PROVIDER", "anthropic")
     LLM_PRIMARY_MODEL = os.getenv("EXAMINA_PRIMARY_MODEL", "qwen2.5:14b")
     LLM_FAST_MODEL = os.getenv("EXAMINA_FAST_MODEL", "llama3.1:8b")
     LLM_EMBED_MODEL = os.getenv("EXAMINA_EMBED_MODEL", "nomic-embed-text")
