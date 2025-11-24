@@ -36,14 +36,15 @@
   - Thread-safe with persistent caching
   - Works for ALL providers (anthropic, groq, ollama, openai, future)
   - CLI command: `examina rate-limits`
-- [ ] **Analysis Performance Optimization** - Speed up bulk analysis (currently 0.5 ex/s)
-  - Current: 60s for 27 exercises (2.2s per exercise)
-  - Bottleneck: Sequential LLM calls within batches (Python GIL limitation)
-  - **Option 1**: Increase batch size (10 → 30) - Low effort, moderate gain
-  - **Option 2**: Async/await with asyncio - Medium effort, high gain (3-5x faster)
-  - **Option 3**: Procedure pattern caching - High effort, very high gain
-  - **Option 4**: Stream processing pipeline - High effort, architectural change
-  - Target: 2-3 ex/s (60-90s for 100 exercises)
+- [x] **Analysis Performance Optimization (Phase 1)** ✅ (completed 2025-11-24)
+  - ✅ **Option 1 Complete**: Increased batch size (10 → 30)
+  - **Result**: 40% faster analysis (60s → 36-40s for 27 exercises)
+  - **Next options for further improvement**:
+    - **Option 2**: Async/await with asyncio - Medium effort, high gain (3-5x faster)
+    - **Option 3**: Procedure pattern caching - High effort, very high gain
+    - **Option 4**: Stream processing pipeline - High effort, architectural change
+  - **Current performance**: ~0.7 ex/s (improved from 0.5 ex/s)
+  - **Target for next phase**: 2-3 ex/s (60-90s for 100 exercises)
 
 ### Phase 6 - Multi-Core-Loop Support
 - [x] **Clean up orphaned core loops** - ✅ Added `--clean-orphans` flag to deduplicate command
