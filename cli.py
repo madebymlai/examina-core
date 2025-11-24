@@ -167,6 +167,36 @@ def info(course):
                     core_loops = db.get_core_loops_by_topic(topic['id'])
                     console.print(f"  • {topic['name']} ({len(core_loops)} core loops)")
 
+            # Show exercise type breakdown
+            from core.proof_tutor import ProofTutor
+            proof_tutor = ProofTutor()
+
+            proof_count = 0
+            procedural_count = 0
+            theory_count = 0
+
+            for ex in exercises:
+                text = ex.get('text', '')
+                is_proof = proof_tutor.is_proof_exercise(text)
+                ex_tags = ex.get('tags')
+                ex_tags_str = str(ex_tags) if ex_tags else '[]'
+
+                if is_proof:
+                    proof_count += 1
+                elif any(tag in ex_tags_str for tag in ['design', 'transformation', 'implementation']):
+                    procedural_count += 1
+                elif any(tag in ex_tags_str for tag in ['analysis', 'verification']):
+                    theory_count += 1
+
+            if proof_count > 0 or procedural_count > 0 or theory_count > 0:
+                console.print(f"\n[bold]Exercise Type Breakdown:[/bold]")
+                if procedural_count > 0:
+                    console.print(f"  Procedural: {procedural_count} ({procedural_count*100//len(exercises) if exercises else 0}%)")
+                if theory_count > 0:
+                    console.print(f"  Theory: {theory_count} ({theory_count*100//len(exercises) if exercises else 0}%)")
+                if proof_count > 0:
+                    console.print(f"  Proof: {proof_count} ({proof_count*100//len(exercises) if exercises else 0}%)")
+
             # Show multi-procedure statistics
             multi_proc_exercises = db.get_exercises_with_multiple_procedures(found_course['code'])
             if multi_proc_exercises:
@@ -692,6 +722,18 @@ def analyze(course, limit, provider, lang, force, parallel, batch_size):
                     if tags:
                         db.update_exercise_tags(first_id, list(set(tags)))
 
+                    # Phase 9.2: Update theory metadata if present
+                    if analysis.exercise_type in ['theory', 'proof', 'hybrid']:
+                        db.update_exercise_theory_metadata(
+                            exercise_id=first_id,
+                            exercise_type=analysis.exercise_type,
+                            theory_category=analysis.theory_category,
+                            theorem_name=analysis.theorem_name,
+                            concept_id=analysis.concept_id,
+                            prerequisite_concepts=analysis.prerequisite_concepts,
+                            theory_metadata=analysis.theory_metadata
+                        )
+
             db.conn.commit()
             console.print("   ✓ Stored in database\n")
 
@@ -1094,6 +1136,137 @@ def generate(course, loop, difficulty, lang):
 
 
 @cli.command()
+@click.option('--course', '-c', required=True, help='Course code')
+@click.option('--interactive', '-i', is_flag=True, help='Interactive proof practice mode')
+@click.option('--lang', type=click.Choice(['en', 'it']), default='en',
+              help='Output language (default: en)')
+def prove(course, interactive, lang):
+    """Practice proof exercises with specialized proof guidance."""
+    from core.proof_tutor import ProofTutor
+    from models.llm_manager import LLMManager
+    from rich.panel import Panel
+
+    console.print(f"\n[bold cyan]Proof Practice Mode for {course}...[/bold cyan]\n")
+
+    try:
+        # Find course
+        with Database() as db:
+            all_courses = db.get_all_courses()
+            found_course = None
+            for c in all_courses:
+                if c['code'] == course or c['acronym'] == course:
+                    found_course = c
+                    break
+
+            if not found_course:
+                console.print(f"[red]Course '{course}' not found.[/red]\n")
+                return
+
+            course_code = found_course['code']
+
+            # Find proof exercises
+            exercises = db.get_exercises_by_course(course_code)
+
+        # Initialize proof tutor
+        llm = LLMManager(provider="anthropic")
+        proof_tutor = ProofTutor(llm, language=lang)
+
+        # Filter proof exercises
+        proof_exercises = [ex for ex in exercises if proof_tutor.is_proof_exercise(ex.get('text', ''))]
+
+        if not proof_exercises:
+            console.print(f"[yellow]No proof exercises found for {found_course['name']}.[/yellow]\n")
+            console.print("Try a different course (AL or PC often have proofs).\n")
+            return
+
+        console.print(f"Found {len(proof_exercises)} proof exercise(s)\n")
+
+        # Pick a random proof exercise
+        import random
+        exercise = random.choice(proof_exercises)
+
+        # Display exercise
+        console.print("[bold]Proof Exercise:[/bold]\n")
+        console.print(Panel(exercise['text'], border_style="blue"))
+        console.print()
+
+        # Analyze the proof
+        console.print("🔍 Analyzing proof structure...\n")
+        analysis = proof_tutor.analyze_proof(course_code, exercise['text'])
+
+        console.print(f"[bold]Proof Analysis:[/bold]")
+        console.print(f"  Type: {analysis.proof_type}")
+        console.print(f"  Suggested Technique: {analysis.technique_suggested}")
+        console.print(f"  Difficulty: {analysis.difficulty}")
+        console.print(f"\n  Given: {analysis.premise}")
+        console.print(f"  To Prove: {analysis.goal}")
+        if analysis.key_concepts:
+            console.print(f"  Key Concepts: {', '.join(analysis.key_concepts)}")
+        console.print()
+
+        if interactive:
+            # Get user's proof attempt
+            console.print("[dim]Type your proof attempt (press Enter twice to submit):[/dim]\n")
+            answer_lines = []
+            empty_count = 0
+
+            while True:
+                try:
+                    line = input()
+                    if line == "":
+                        empty_count += 1
+                        if empty_count >= 2:
+                            break
+                    else:
+                        empty_count = 0
+                    answer_lines.append(line)
+                except EOFError:
+                    break
+
+            user_proof = "\n".join(answer_lines[:-1]) if answer_lines else ""
+
+            if not user_proof.strip():
+                console.print("\n[yellow]No proof provided. Showing solution instead...[/yellow]\n")
+                # Generate explanation
+                console.print("🤖 Generating proof explanation...\n")
+                explanation = proof_tutor.learn_proof(course_code, exercise['id'], exercise['text'])
+                from rich.markdown import Markdown
+                md = Markdown(explanation)
+                console.print(md)
+            else:
+                # Evaluate proof attempt
+                console.print("\n🤖 Evaluating your proof...\n")
+                result = proof_tutor.practice_proof(course_code, exercise['text'], user_proof, provide_hints=True)
+
+                # Display feedback
+                from rich.markdown import Markdown
+                md = Markdown(result['feedback'])
+                console.print(md)
+
+                score_pct = int(result['score'] * 100)
+                if result['is_correct']:
+                    console.print(f"\n[green]✅ Correct! Score: {score_pct}%[/green]\n")
+                else:
+                    console.print(f"\n[yellow]Score: {score_pct}%[/yellow]\n")
+        else:
+            # Just show explanation
+            console.print("🤖 Generating proof explanation...\n")
+            explanation = proof_tutor.learn_proof(course_code, exercise['id'], exercise['text'])
+            from rich.markdown import Markdown
+            md = Markdown(explanation)
+            console.print(md)
+            console.print(f"\n[dim]Exercise ID: {exercise['id'][:20]}...[/dim]\n")
+
+    except KeyboardInterrupt:
+        console.print("\n\n[yellow]Proof practice cancelled.[/yellow]\n")
+    except Exception as e:
+        console.print(f"\n[bold red]Error:[/bold red] {e}\n")
+        import traceback
+        traceback.print_exc()
+        raise click.Abort()
+
+
+@cli.command()
 @click.option('--course', '-c', required=True, help='Course code (e.g., B006802 or ADE)')
 @click.option('--questions', '-n', type=int, default=10, help='Number of questions (default: 10)')
 @click.option('--topic', '-t', help='Filter by topic')
@@ -1106,9 +1279,11 @@ def generate(course, loop, difficulty, lang):
               help='Filter by procedure type')
 @click.option('--multi-only', is_flag=True, help='Only show multi-procedure exercises')
 @click.option('--tags', help='Filter by tags (comma-separated)')
+@click.option('--type', 'exercise_type', type=click.Choice(['procedural', 'theory', 'proof']),
+              help='Filter by exercise type (procedural=design/implementation, theory=analysis, proof=proofs)')
 @click.option('--lang', type=click.Choice(['en', 'it']), default='en',
               help='Language for feedback (default: en)')
-def quiz(course, questions, topic, loop, difficulty, review_only, procedure, multi_only, tags, lang):
+def quiz(course, questions, topic, loop, difficulty, review_only, procedure, multi_only, tags, exercise_type, lang):
     """Take an interactive quiz to test your knowledge."""
     from core.quiz_engine import QuizEngine
     from models.llm_manager import LLMManager
@@ -1150,7 +1325,8 @@ def quiz(course, questions, topic, loop, difficulty, review_only, procedure, mul
                 review_only=review_only,
                 procedure_type=procedure,
                 multi_only=multi_only,
-                tags=tags
+                tags=tags,
+                exercise_type=exercise_type
             )
         except ValueError as e:
             console.print(f"[red]Error: {e}[/red]\n")
@@ -1167,6 +1343,8 @@ def quiz(course, questions, topic, loop, difficulty, review_only, procedure, mul
             quiz_info += f" | Difficulty: {difficulty}"
         if procedure:
             quiz_info += f" | Procedure: {procedure}"
+        if exercise_type:
+            quiz_info += f" | Type: {exercise_type}"
         if multi_only:
             quiz_info += " | Multi-Procedure Only"
         if review_only:

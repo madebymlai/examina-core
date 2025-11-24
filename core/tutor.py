@@ -12,6 +12,7 @@ from storage.database import Database
 from config import Config
 from core.concept_explainer import ConceptExplainer
 from core.study_strategies import StudyStrategyManager
+from core.proof_tutor import ProofTutor
 
 
 @dataclass
@@ -36,6 +37,7 @@ class Tutor:
         self.language = language
         self.concept_explainer = ConceptExplainer(llm_manager=self.llm, language=language)
         self.strategy_manager = StudyStrategyManager(language=language)
+        self.proof_tutor = ProofTutor(llm_manager=self.llm, language=language)
 
     def learn(self, course_code: str,
               core_loop_id: str,
@@ -76,6 +78,11 @@ class Tutor:
             examples = [ex for ex in exercises if ex.get('core_loop_id') == core_loop_id][:3]
 
         core_loop_dict = dict(core_loop)
+
+        # Check if this is a proof exercise (check first example)
+        if examples and self.proof_tutor.is_proof_exercise(examples[0].get('text', '')):
+            # Use proof-specific learning
+            return self._learn_proof(course_code, core_loop_id, examples[0], explain_concepts, depth, adaptive)
         core_loop_name = core_loop_dict.get('name', '')
 
         # Adaptive teaching: Auto-select depth and prerequisites based on mastery
@@ -600,3 +607,56 @@ Generate ONLY the exercise text, not the solution.
                 pass
 
         return "\n".join(lines)
+
+    def _learn_proof(self, course_code: str, core_loop_id: str, example_exercise: Dict[str, Any],
+                     explain_concepts: bool, depth: str, adaptive: bool) -> TutorResponse:
+        """Handle proof-specific learning.
+
+        Args:
+            course_code: Course code
+            core_loop_id: Core loop ID
+            example_exercise: Example proof exercise
+            explain_concepts: Whether to include prerequisites
+            depth: Explanation depth
+            adaptive: Whether to use adaptive teaching
+
+        Returns:
+            TutorResponse with proof explanation
+        """
+        exercise_text = example_exercise.get('text', '')
+        exercise_id = example_exercise.get('id', '')
+
+        # Get proof-specific explanation
+        proof_explanation = self.proof_tutor.learn_proof(course_code, exercise_id, exercise_text)
+
+        # Optionally add prerequisite concepts
+        full_content = []
+
+        if explain_concepts:
+            # Extract core loop name for concept explanation
+            with Database() as db:
+                core_loop = db.conn.execute(
+                    "SELECT name FROM core_loops WHERE id = ?",
+                    (core_loop_id,)
+                ).fetchone()
+                if core_loop:
+                    core_loop_name = core_loop['name']
+                    prerequisite_text = self.concept_explainer.explain_prerequisites(
+                        core_loop_name, depth=depth
+                    )
+                    if prerequisite_text:
+                        full_content.append(prerequisite_text)
+                        full_content.append("\n" + "=" * 60 + "\n")
+
+        full_content.append(proof_explanation)
+
+        return TutorResponse(
+            content="\n".join(full_content),
+            success=True,
+            metadata={
+                "core_loop": core_loop_id,
+                "is_proof": True,
+                "depth": depth,
+                "includes_prerequisites": explain_concepts
+            }
+        )

@@ -13,6 +13,7 @@ from storage.database import Database
 from core.tutor import Tutor
 from models.llm_manager import LLMManager
 from config import Config
+from core.proof_tutor import ProofTutor
 
 
 @dataclass
@@ -63,6 +64,7 @@ class QuizEngine:
         """
         self.llm = llm_manager or LLMManager(provider="anthropic")
         self.tutor = Tutor(llm_manager=self.llm, language=language)
+        self.proof_tutor = ProofTutor(llm_manager=self.llm, language=language)
         self.language = language
 
     def create_quiz_session(
@@ -75,7 +77,8 @@ class QuizEngine:
         review_only: bool = False,
         procedure_type: Optional[str] = None,
         multi_only: bool = False,
-        tags: Optional[str] = None
+        tags: Optional[str] = None,
+        exercise_type: Optional[str] = None
     ) -> QuizSession:
         """Create a new quiz session.
 
@@ -89,6 +92,7 @@ class QuizEngine:
             procedure_type: Optional procedure type (transformation, design, etc.)
             multi_only: If True, only include exercises with multiple procedures
             tags: Optional tag filter (comma-separated)
+            exercise_type: Optional exercise type filter (procedural, theory, proof)
 
         Returns:
             QuizSession object
@@ -119,7 +123,8 @@ class QuizEngine:
             review_only=review_only,
             procedure_type=procedure_type,
             multi_only=multi_only,
-            tags=tags
+            tags=tags,
+            exercise_type=exercise_type
         )
 
         if not exercises:
@@ -189,7 +194,8 @@ class QuizEngine:
         review_only: bool,
         procedure_type: Optional[str] = None,
         multi_only: bool = False,
-        tags: Optional[str] = None
+        tags: Optional[str] = None,
+        exercise_type: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """Select exercises for the quiz.
 
@@ -203,6 +209,7 @@ class QuizEngine:
             procedure_type: Optional procedure type filter (transformation, design, etc.)
             multi_only: Only exercises with multiple procedures
             tags: Optional tag filter (comma-separated)
+            exercise_type: Optional exercise type filter (procedural, theory, proof)
 
         Returns:
             List of exercise dictionaries
@@ -281,6 +288,28 @@ class QuizEngine:
 
             # Convert to dictionaries
             exercises = [dict(row) for row in results]
+
+            # Filter by exercise type if specified
+            if exercise_type:
+                filtered = []
+                for ex in exercises:
+                    text = ex.get('text', '')
+                    is_proof = self.proof_tutor.is_proof_exercise(text)
+
+                    if exercise_type == 'proof' and is_proof:
+                        filtered.append(ex)
+                    elif exercise_type == 'procedural' and not is_proof:
+                        # Check if it has procedural tags (design, transformation, etc.)
+                        ex_tags = ex.get('tags', '[]')
+                        if any(tag in ex_tags for tag in ['design', 'transformation', 'implementation']):
+                            filtered.append(ex)
+                    elif exercise_type == 'theory' and not is_proof:
+                        # Theory exercises are typically analysis or verification without proof keywords
+                        ex_tags = ex.get('tags', '[]')
+                        if any(tag in ex_tags for tag in ['analysis', 'verification']):
+                            filtered.append(ex)
+
+                exercises = filtered
 
             # Prioritize review exercises if available
             if review_only or (len(exercises) > num_questions):

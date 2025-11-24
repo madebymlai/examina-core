@@ -324,6 +324,92 @@ class Database:
             print(f"[INFO] Migration completed: {migrated_count} relationships migrated to exercise_core_loops")
             print("[INFO] Note: exercises.core_loop_id column retained for backward compatibility")
 
+        # Phase 9.1: Add exercise_type and theory_metadata columns
+        cursor = self.conn.execute("PRAGMA table_info(exercises)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if 'exercise_type' not in columns:
+            print("[INFO] Running migration: Adding exercise_type column to exercises table")
+            self.conn.execute("""
+                ALTER TABLE exercises
+                ADD COLUMN exercise_type TEXT DEFAULT 'procedural'
+                    CHECK(exercise_type IN ('procedural', 'theory', 'proof', 'hybrid'))
+            """)
+            print("[INFO] Migration completed: exercise_type column added")
+
+        if 'theory_metadata' not in columns:
+            print("[INFO] Running migration: Adding theory_metadata column to exercises table")
+            self.conn.execute("""
+                ALTER TABLE exercises
+                ADD COLUMN theory_metadata TEXT
+            """)
+            print("[INFO] Migration completed: theory_metadata column added")
+
+        # Phase 9.2: Add theory question categorization fields
+        cursor = self.conn.execute("PRAGMA table_info(exercises)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if 'theory_category' not in columns:
+            print("[INFO] Running migration: Adding theory_category column to exercises table")
+            self.conn.execute("""
+                ALTER TABLE exercises
+                ADD COLUMN theory_category TEXT
+            """)
+            print("[INFO] Migration completed: theory_category column added")
+
+        if 'theorem_name' not in columns:
+            self.conn.execute("""
+                ALTER TABLE exercises
+                ADD COLUMN theorem_name TEXT
+            """)
+            print("[INFO] Migration completed: theorem_name column added")
+
+        if 'concept_id' not in columns:
+            self.conn.execute("""
+                ALTER TABLE exercises
+                ADD COLUMN concept_id TEXT
+            """)
+            print("[INFO] Migration completed: concept_id column added")
+
+        if 'prerequisite_concepts' not in columns:
+            self.conn.execute("""
+                ALTER TABLE exercises
+                ADD COLUMN prerequisite_concepts TEXT
+            """)
+            print("[INFO] Migration completed: prerequisite_concepts column added")
+
+        # Phase 9.2: Create theory_concepts table if it doesn't exist
+        cursor = self.conn.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='theory_concepts'
+        """)
+        if not cursor.fetchone():
+            print("[INFO] Running migration: Creating theory_concepts table")
+            self.conn.execute("""
+                CREATE TABLE theory_concepts (
+                    id TEXT PRIMARY KEY,
+                    course_code TEXT NOT NULL,
+                    topic_id INTEGER,
+                    name TEXT NOT NULL,
+                    category TEXT,
+                    description TEXT,
+                    prerequisite_concept_ids TEXT,
+                    related_concept_ids TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (course_code) REFERENCES courses(code),
+                    FOREIGN KEY (topic_id) REFERENCES topics(id)
+                )
+            """)
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_theory_concepts_course
+                ON theory_concepts(course_code)
+            """)
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_theory_concepts_topic
+                ON theory_concepts(topic_id)
+            """)
+            print("[INFO] Migration completed: theory_concepts table created")
+
     def _create_tables(self):
         """Create all database tables."""
 
@@ -390,6 +476,9 @@ class Database:
                 analysis_metadata TEXT,
                 low_confidence_skipped BOOLEAN DEFAULT 0,
                 tags TEXT,
+                exercise_type TEXT DEFAULT 'procedural'
+                    CHECK(exercise_type IN ('procedural', 'theory', 'proof', 'hybrid')),
+                theory_metadata TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (course_code) REFERENCES courses(code),
                 FOREIGN KEY (topic_id) REFERENCES topics(id),
@@ -1505,3 +1594,169 @@ class Database:
             results.append(result)
         return results
 
+
+    # Phase 9.2: Theory Concept operations
+    def add_theory_concept(self, concept_id: str, course_code: str, name: str,
+                          category: Optional[str] = None, topic_id: Optional[int] = None,
+                          description: Optional[str] = None,
+                          prerequisite_concept_ids: Optional[List[str]] = None,
+                          related_concept_ids: Optional[List[str]] = None) -> str:
+        """Add a new theory concept.
+
+        Args:
+            concept_id: Unique identifier for the concept
+            course_code: Course code
+            name: Concept name
+            category: Category (definition, theorem, axiom, property, etc.)
+            topic_id: Optional topic ID
+            description: Optional description
+            prerequisite_concept_ids: List of prerequisite concept IDs
+            related_concept_ids: List of related concept IDs
+
+        Returns:
+            Concept ID
+        """
+        prereq_json = json.dumps(prerequisite_concept_ids) if prerequisite_concept_ids else None
+        related_json = json.dumps(related_concept_ids) if related_concept_ids else None
+
+        self.conn.execute("""
+            INSERT OR REPLACE INTO theory_concepts
+            (id, course_code, topic_id, name, category, description,
+             prerequisite_concept_ids, related_concept_ids)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (concept_id, course_code, topic_id, name, category, description,
+              prereq_json, related_json))
+        return concept_id
+
+    def get_theory_concept(self, concept_id: str) -> Optional[Dict[str, Any]]:
+        """Get theory concept by ID."""
+        cursor = self.conn.execute(
+            "SELECT * FROM theory_concepts WHERE id = ?", (concept_id,)
+        )
+        row = cursor.fetchone()
+        if row:
+            result = dict(row)
+            if result.get('prerequisite_concept_ids'):
+                result['prerequisite_concept_ids'] = json.loads(result['prerequisite_concept_ids'])
+            if result.get('related_concept_ids'):
+                result['related_concept_ids'] = json.loads(result['related_concept_ids'])
+            return result
+        return None
+
+    def get_theory_concepts_by_course(self, course_code: str) -> List[Dict[str, Any]]:
+        """Get all theory concepts for a course."""
+        cursor = self.conn.execute("""
+            SELECT * FROM theory_concepts
+            WHERE course_code = ?
+            ORDER BY name
+        """, (course_code,))
+        results = []
+        for row in cursor.fetchall():
+            result = dict(row)
+            if result.get('prerequisite_concept_ids'):
+                result['prerequisite_concept_ids'] = json.loads(result['prerequisite_concept_ids'])
+            if result.get('related_concept_ids'):
+                result['related_concept_ids'] = json.loads(result['related_concept_ids'])
+            results.append(result)
+        return results
+
+    def get_theory_concepts_by_category(self, course_code: str, category: str) -> List[Dict[str, Any]]:
+        """Get theory concepts filtered by category."""
+        cursor = self.conn.execute("""
+            SELECT * FROM theory_concepts
+            WHERE course_code = ? AND category = ?
+            ORDER BY name
+        """, (course_code, category))
+        results = []
+        for row in cursor.fetchall():
+            result = dict(row)
+            if result.get('prerequisite_concept_ids'):
+                result['prerequisite_concept_ids'] = json.loads(result['prerequisite_concept_ids'])
+            if result.get('related_concept_ids'):
+                result['related_concept_ids'] = json.loads(result['related_concept_ids'])
+            results.append(result)
+        return results
+
+    def update_exercise_theory_metadata(self, exercise_id: str,
+                                       exercise_type: Optional[str] = None,
+                                       theory_category: Optional[str] = None,
+                                       theorem_name: Optional[str] = None,
+                                       concept_id: Optional[str] = None,
+                                       prerequisite_concepts: Optional[List[str]] = None,
+                                       theory_metadata: Optional[Dict[str, Any]] = None):
+        """Update exercise with theory metadata.
+
+        Args:
+            exercise_id: Exercise ID
+            exercise_type: Exercise type (procedural, theory, proof, hybrid)
+            theory_category: Theory category (definition, theorem, proof, explanation, etc.)
+            theorem_name: Name of theorem (if applicable)
+            concept_id: Main concept ID
+            prerequisite_concepts: List of prerequisite concept IDs
+            theory_metadata: Additional theory metadata as dict
+        """
+        updates = []
+        params = []
+
+        if exercise_type is not None:
+            updates.append("exercise_type = ?")
+            params.append(exercise_type)
+
+        if theory_category is not None:
+            updates.append("theory_category = ?")
+            params.append(theory_category)
+
+        if theorem_name is not None:
+            updates.append("theorem_name = ?")
+            params.append(theorem_name)
+
+        if concept_id is not None:
+            updates.append("concept_id = ?")
+            params.append(concept_id)
+
+        if prerequisite_concepts is not None:
+            updates.append("prerequisite_concepts = ?")
+            params.append(json.dumps(prerequisite_concepts))
+
+        if theory_metadata is not None:
+            updates.append("theory_metadata = ?")
+            params.append(json.dumps(theory_metadata))
+
+        if updates:
+            query = f"UPDATE exercises SET {', '.join(updates)} WHERE id = ?"
+            params.append(exercise_id)
+            self.conn.execute(query, params)
+
+    def get_exercises_by_theory_category(self, course_code: str, theory_category: str) -> List[Dict[str, Any]]:
+        """Get exercises filtered by theory category.
+
+        Args:
+            course_code: Course code to filter by
+            theory_category: Theory category (definition, theorem, proof, etc.)
+
+        Returns:
+            List of exercise dictionaries
+        """
+        cursor = self.conn.execute("""
+            SELECT * FROM exercises
+            WHERE course_code = ? AND theory_category = ?
+            ORDER BY created_at DESC
+        """, (course_code, theory_category))
+
+        results = []
+        for row in cursor.fetchall():
+            result = dict(row)
+            if result.get('image_paths'):
+                result['image_paths'] = json.loads(result['image_paths'])
+            if result.get('variations'):
+                result['variations'] = json.loads(result['variations'])
+            if result.get('analysis_metadata'):
+                result['analysis_metadata'] = json.loads(result['analysis_metadata'])
+            if result.get('theory_metadata'):
+                result['theory_metadata'] = json.loads(result['theory_metadata'])
+            if result.get('prerequisite_concepts'):
+                result['prerequisite_concepts'] = json.loads(result['prerequisite_concepts'])
+            if result.get('tags'):
+                result['tags'] = json.loads(result['tags'])
+            results.append(result)
+        return results

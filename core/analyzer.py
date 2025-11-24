@@ -47,6 +47,18 @@ class AnalysisResult:
     confidence: float
     procedures: List[ProcedureInfo]  # NEW: Multiple procedures support
 
+    # Phase 9.1: Exercise type detection
+    exercise_type: Optional[str] = 'procedural'  # 'procedural', 'theory', 'proof', 'hybrid'
+    type_confidence: float = 0.0  # Confidence in type classification
+    proof_keywords: Optional[List[str]] = None  # Detected proof keywords if any
+    theory_metadata: Optional[Dict[str, Any]] = None  # Theory-specific metadata
+
+    # Phase 9.2: Theory question categorization
+    theory_category: Optional[str] = None  # 'definition', 'theorem', 'proof', 'explanation', 'derivation', 'concept'
+    theorem_name: Optional[str] = None  # Name of theorem if applicable
+    concept_id: Optional[str] = None  # ID of main concept
+    prerequisite_concepts: Optional[List[str]] = None  # List of prerequisite concept IDs
+
     # Backward compatibility fields (derived from first procedure)
     @property
     def core_loop_id(self) -> Optional[str]:
@@ -172,6 +184,18 @@ class ExerciseAnalyzer:
                 transformation=None
             ))
 
+        # Phase 9.1: Extract exercise type information
+        exercise_type = data.get("exercise_type", "procedural")
+        type_confidence = data.get("type_confidence", 0.5)
+        proof_keywords = data.get("proof_keywords", [])
+        theory_metadata = data.get("theory_metadata")
+
+        # Phase 9.2: Extract theory categorization information
+        theory_category = data.get("theory_category")
+        theorem_name = data.get("theorem_name")
+        concept_id = data.get("concept_id")
+        prerequisite_concepts = data.get("prerequisite_concepts")
+
         # Extract fields
         return AnalysisResult(
             is_valid_exercise=data.get("is_valid_exercise", True),
@@ -181,7 +205,15 @@ class ExerciseAnalyzer:
             difficulty=data.get("difficulty"),
             variations=data.get("variations", []),
             confidence=data.get("confidence", 0.5),
-            procedures=procedures
+            procedures=procedures,
+            exercise_type=exercise_type,
+            type_confidence=type_confidence,
+            proof_keywords=proof_keywords if proof_keywords else None,
+            theory_metadata=theory_metadata,
+            theory_category=theory_category,
+            theorem_name=theorem_name,
+            concept_id=concept_id,
+            prerequisite_concepts=prerequisite_concepts
         )
 
     def _build_analysis_prompt(self, exercise_text: str, course_name: str,
@@ -249,7 +281,19 @@ Respond in JSON format with:
         "target_format": "format name"   // e.g., "Moore Machine", "POS"
       }}
     }}
-  ]
+  ],
+  "exercise_type": "procedural|theory|proof|hybrid",  // Type of exercise (Phase 9.1)
+  "type_confidence": 0.0-1.0,  // Confidence in exercise type classification
+  "proof_keywords": ["keyword1", ...],  // Detected proof keywords if any
+  "theory_metadata": {{  // Theory-specific metadata (optional)
+    "theorem_name": "name if applicable",
+    "requires_definition": true/false,
+    "requires_explanation": true/false
+  }},
+  "theory_category": "definition|theorem|axiom|property|explanation|derivation|concept|null",  // Phase 9.2: Theory category
+  "theorem_name": "specific theorem name if asking about a theorem",  // Phase 9.2: e.g., "Teorema di Diagonalizzazione"
+  "concept_id": "normalized_concept_id",  // Phase 9.2: e.g., "autovalori_autovettori"
+  "prerequisite_concepts": ["concept_id_1", "concept_id_2"]  // Phase 9.2: concepts needed to understand this
 }}
 
 IMPORTANT ANALYSIS GUIDELINES:
@@ -270,6 +314,97 @@ MULTI-PROCEDURE DETECTION:
 - Set "point_number" to indicate which numbered point it belongs to
 - If exercise requires multiple procedures (e.g., "design AND verify"), list ALL of them
 - For transformations/conversions (Mealy→Moore, SOP→POS, etc.), set type="transformation" and fill "transformation" object
+
+EXERCISE TYPE CLASSIFICATION (Phase 9.1):
+- **procedural**: Exercise requires applying an algorithm/procedure to solve a problem
+  * Examples: "Design a Mealy machine", "Calculate determinant", "Solve differential equation"
+  * Has clear input → process → output structure
+  * Focuses on HOW to solve (execution of steps)
+
+- **theory**: Exercise asks for definitions, explanations, or conceptual understanding
+  * Examples: "Define what is a vector space", "Explain the concept of eigenvalues"
+  * Asks "What is...", "Define...", "Explain...", "Describe..."
+  * No computational work required
+
+- **proof**: Exercise requires proving a theorem, property, or statement
+  * KEYWORDS to detect (Italian): "dimostra", "dimostrare", "dimostrazione", "provare", "prova che"
+  * KEYWORDS to detect (English): "prove", "proof", "show that", "demonstrate that", "verify that"
+  * Requires logical reasoning and mathematical proof structure
+  * May ask to prove theorems, properties, or general statements
+
+- **hybrid**: Exercise combines multiple types (e.g., prove a property AND apply it to compute)
+  * Has both procedural and theory/proof components
+  * Example: "Prove the theorem and then use it to compute..."
+
+PROOF KEYWORD DETECTION:
+- Scan the exercise text for proof keywords in BOTH Italian and English
+- If found, classify as "proof" or "hybrid" (if also has procedural component)
+- Store detected keywords in "proof_keywords" array
+- Set type_confidence higher (0.9+) when proof keywords are explicitly present
+
+THEORY QUESTION CATEGORIZATION (Phase 9.2):
+For exercises with exercise_type="theory" or "hybrid", categorize into specific theory categories:
+
+**definition**: Asks for a formal definition of a concept, term, or object
+  * Keywords (IT): "definisci", "definizione", "cos'è", "cosa si intende per"
+  * Keywords (EN): "define", "definition", "what is", "what does ... mean"
+  * Example: "Dare la definizione di autovalore e autovettore"
+  * Set concept_id to normalized name (e.g., "autovalore_autovettore")
+
+**theorem**: Asks to state, explain, or apply a specific theorem
+  * Keywords (IT): "enunciare", "teorema", "enunciato"
+  * Keywords (EN): "state the theorem", "theorem", "proposition"
+  * Example: "Enunciare il teorema spettrale"
+  * Set theorem_name to specific theorem name
+  * Set concept_id to theorem identifier (e.g., "teorema_spettrale")
+
+**axiom**: Asks about axioms, postulates, or fundamental properties
+  * Keywords (IT): "assioma", "assiomi", "proprietà fondamentale", "postulato"
+  * Keywords (EN): "axiom", "axioms", "postulate", "fundamental property"
+  * Example: "Elencare gli assiomi di uno spazio vettoriale"
+  * Set concept_id to axiom system (e.g., "assiomi_spazio_vettoriale")
+
+**property**: Asks about properties, characteristics, or conditions
+  * Keywords (IT): "proprietà", "caratteristica", "condizione"
+  * Keywords (EN): "property", "characteristic", "condition"
+  * Example: "Quali proprietà ha la mutua esclusione?"
+  * Set concept_id to property being discussed
+
+**explanation**: Asks to explain HOW or WHY something works
+  * Keywords (IT): "spiega", "spiegare", "come funziona", "perché", "illustra"
+  * Keywords (EN): "explain", "how does", "why", "illustrate", "describe how"
+  * Example: "Spiegare come funziona l'algoritmo del fornaio"
+  * Set concept_id to concept being explained
+
+**derivation**: Asks to derive or show how to obtain a result
+  * Keywords (IT): "deriva", "derivare", "come si ottiene", "ricava"
+  * Keywords (EN): "derive", "obtain", "show how to get"
+  * Example: "Derivare la formula del cambio di base"
+  * Set concept_id to formula/result being derived
+
+**concept**: General conceptual question not fitting other categories
+  * Use for understanding checks, conceptual comparisons, relationships
+  * Example: "Qual è la relazione tra autovalori e diagonalizzabilità?"
+  * Set concept_id to main concept discussed
+
+PREREQUISITE CONCEPT DETECTION:
+- Identify concepts that must be understood to answer the question
+- For "Dare la definizione di autovalore": prerequisites might be ["matrice", "vettore", "moltiplicazione_matriciale"]
+- For "Enunciare condizioni per diagonalizzabilità": prerequisites are ["autovalore", "molteplicita_algebrica", "molteplicita_geometrica"]
+- List 1-5 most important prerequisite concepts as normalized IDs
+
+CONCEPT ID NORMALIZATION:
+- Convert concept names to lowercase IDs with underscores
+- Examples: "Autovalori e Autovettori" → "autovalori_autovettori"
+- "Mutua Esclusione" → "mutua_esclusione"
+- "IEEE 754" → "ieee_754"
+- "Legge di Amdahl" → "legge_di_amdahl"
+
+IMPORTANT:
+- theory_category is ONLY for theory/hybrid exercises (null for procedural)
+- For hybrid exercises, fill BOTH procedures array AND theory fields
+- If exercise asks definition AND computation, mark as hybrid with both
+- Use the course context to infer concepts (e.g., Computer Architecture → hardware concepts)
 
 BACKWARD COMPATIBILITY:
 - Even if exercise has only ONE procedure, still return it in "procedures" array
@@ -310,7 +445,11 @@ Respond ONLY with valid JSON, no other text.
             difficulty=None,
             variations=None,
             confidence=0.0,
-            procedures=[]  # Empty procedures list
+            procedures=[],  # Empty procedures list
+            exercise_type='procedural',  # Default type
+            type_confidence=0.0,
+            proof_keywords=None,
+            theory_metadata=None
         )
 
     def merge_exercises(self, exercises: List[Dict[str, Any]], skip_analyzed: bool = False) -> List[Dict[str, Any]]:
