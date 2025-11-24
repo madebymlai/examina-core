@@ -153,9 +153,9 @@ class Config:
             "burst_size": 5
         },
         "deepseek": {
-            "requests_per_minute": int(os.getenv("DEEPSEEK_RPM", "60")),  # DeepSeek rate limits
-            "tokens_per_minute": int(os.getenv("DEEPSEEK_TPM", "1000000")),  # 1M tokens/min typical
-            "burst_size": 5
+            "requests_per_minute": None,  # No rate limit (DeepSeek has very high/no limits)
+            "tokens_per_minute": None,  # No rate limit
+            "burst_size": 1
         }
         # Add more providers as needed - the system is fully generic
     }
