@@ -434,6 +434,74 @@ class Database:
             print("[INFO] Migration completed: language column added to topics")
             print("[INFO] Note: Run 'examina detect-languages --course CODE' to detect languages for existing data")
 
+        # Phase: Learning Materials Support - Create tables for lecture notes, theory, worked examples
+        cursor = self.conn.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='learning_materials'
+        """)
+        if not cursor.fetchone():
+            print("[INFO] Running migration: Creating learning_materials table for lecture notes and theory")
+            self.conn.execute("""
+                CREATE TABLE learning_materials (
+                    id TEXT PRIMARY KEY,
+                    course_code TEXT NOT NULL,
+                    material_type TEXT NOT NULL,
+                    topic_id INTEGER,
+                    title TEXT,
+                    content TEXT NOT NULL,
+                    source_pdf TEXT NOT NULL,
+                    page_number INTEGER,
+                    has_images BOOLEAN DEFAULT 0,
+                    image_paths TEXT,
+                    latex_content TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (course_code) REFERENCES courses(code),
+                    FOREIGN KEY (topic_id) REFERENCES topics(id)
+                )
+            """)
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_learning_materials_course
+                ON learning_materials(course_code)
+            """)
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_learning_materials_topic
+                ON learning_materials(topic_id)
+            """)
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_learning_materials_type
+                ON learning_materials(material_type)
+            """)
+            print("[INFO] Migration completed: learning_materials table created")
+
+        # Phase: Learning Materials Support - Create links between materials and exercises
+        cursor = self.conn.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='material_exercise_links'
+        """)
+        if not cursor.fetchone():
+            print("[INFO] Running migration: Creating material_exercise_links table")
+            self.conn.execute("""
+                CREATE TABLE material_exercise_links (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    material_id TEXT NOT NULL,
+                    exercise_id TEXT NOT NULL,
+                    link_type TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (material_id) REFERENCES learning_materials(id),
+                    FOREIGN KEY (exercise_id) REFERENCES exercises(id),
+                    UNIQUE(material_id, exercise_id, link_type)
+                )
+            """)
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_material_links_material
+                ON material_exercise_links(material_id)
+            """)
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_material_links_exercise
+                ON material_exercise_links(exercise_id)
+            """)
+            print("[INFO] Migration completed: material_exercise_links table created")
+
     def _create_tables(self):
         """Create all database tables."""
 
@@ -1789,5 +1857,171 @@ class Database:
                 result['prerequisite_concepts'] = json.loads(result['prerequisite_concepts'])
             if result.get('tags'):
                 result['tags'] = json.loads(result['tags'])
+            results.append(result)
+        return results
+
+    # Learning Materials Methods (Phase: Learning Materials Support)
+
+    def store_learning_material(self, material_id: str, course_code: str,
+                                material_type: str, content: str, source_pdf: str,
+                                page_number: int, topic_id: Optional[int] = None,
+                                title: Optional[str] = None, has_images: bool = False,
+                                image_paths: Optional[List[str]] = None,
+                                latex_content: Optional[str] = None):
+        """Store a learning material (theory, worked example, reference).
+
+        Args:
+            material_id: Unique ID for the material
+            course_code: Course code
+            material_type: Type of material ('theory', 'worked_example', 'reference')
+            content: Material content
+            source_pdf: Source PDF filename
+            page_number: Page number
+            topic_id: Optional topic ID to link to
+            title: Optional title
+            has_images: Whether material has images
+            image_paths: List of image paths
+            latex_content: LaTeX content if present
+        """
+        image_paths_json = json.dumps(image_paths) if image_paths else None
+
+        self.conn.execute("""
+            INSERT OR REPLACE INTO learning_materials
+            (id, course_code, material_type, topic_id, title, content,
+             source_pdf, page_number, has_images, image_paths, latex_content)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (material_id, course_code, material_type, topic_id, title, content,
+              source_pdf, page_number, has_images, image_paths_json, latex_content))
+
+    def get_learning_materials_by_course(self, course_code: str,
+                                        material_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get learning materials for a course.
+
+        Args:
+            course_code: Course code
+            material_type: Optional filter by material type
+
+        Returns:
+            List of learning material dictionaries
+        """
+        if material_type:
+            cursor = self.conn.execute("""
+                SELECT * FROM learning_materials
+                WHERE course_code = ? AND material_type = ?
+                ORDER BY created_at DESC
+            """, (course_code, material_type))
+        else:
+            cursor = self.conn.execute("""
+                SELECT * FROM learning_materials
+                WHERE course_code = ?
+                ORDER BY created_at DESC
+            """, (course_code,))
+
+        results = []
+        for row in cursor.fetchall():
+            result = dict(row)
+            if result.get('image_paths'):
+                result['image_paths'] = json.loads(result['image_paths'])
+            results.append(result)
+        return results
+
+    def get_learning_materials_by_topic(self, topic_id: int,
+                                       material_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get learning materials linked to a topic.
+
+        Args:
+            topic_id: Topic ID
+            material_type: Optional filter by material type
+
+        Returns:
+            List of learning material dictionaries
+        """
+        if material_type:
+            cursor = self.conn.execute("""
+                SELECT * FROM learning_materials
+                WHERE topic_id = ? AND material_type = ?
+                ORDER BY created_at DESC
+            """, (topic_id, material_type))
+        else:
+            cursor = self.conn.execute("""
+                SELECT * FROM learning_materials
+                WHERE topic_id = ?
+                ORDER BY created_at DESC
+            """, (topic_id,))
+
+        results = []
+        for row in cursor.fetchall():
+            result = dict(row)
+            if result.get('image_paths'):
+                result['image_paths'] = json.loads(result['image_paths'])
+            results.append(result)
+        return results
+
+    def link_material_to_exercise(self, material_id: str, exercise_id: str,
+                                  link_type: str):
+        """Create a link between a learning material and an exercise.
+
+        Args:
+            material_id: Learning material ID
+            exercise_id: Exercise ID
+            link_type: Type of link ('worked_example', 'theory_reference', 'prerequisite')
+        """
+        self.conn.execute("""
+            INSERT OR IGNORE INTO material_exercise_links
+            (material_id, exercise_id, link_type)
+            VALUES (?, ?, ?)
+        """, (material_id, exercise_id, link_type))
+
+    def get_materials_for_exercise(self, exercise_id: str) -> List[Dict[str, Any]]:
+        """Get all learning materials linked to an exercise.
+
+        Args:
+            exercise_id: Exercise ID
+
+        Returns:
+            List of (material, link_type) dictionaries
+        """
+        cursor = self.conn.execute("""
+            SELECT lm.*, mel.link_type
+            FROM learning_materials lm
+            JOIN material_exercise_links mel ON lm.id = mel.material_id
+            WHERE mel.exercise_id = ?
+            ORDER BY mel.created_at
+        """, (exercise_id,))
+
+        results = []
+        for row in cursor.fetchall():
+            result = dict(row)
+            if result.get('image_paths'):
+                result['image_paths'] = json.loads(result['image_paths'])
+            results.append(result)
+        return results
+
+    def get_exercises_for_material(self, material_id: str) -> List[Dict[str, Any]]:
+        """Get all exercises linked to a learning material.
+
+        Args:
+            material_id: Learning material ID
+
+        Returns:
+            List of (exercise, link_type) dictionaries
+        """
+        cursor = self.conn.execute("""
+            SELECT e.*, mel.link_type
+            FROM exercises e
+            JOIN material_exercise_links mel ON e.id = mel.exercise_id
+            WHERE mel.material_id = ?
+            ORDER BY mel.created_at
+        """, (material_id,))
+
+        results = []
+        for row in cursor.fetchall():
+            result = dict(row)
+            if result.get('image_paths'):
+                result['image_paths'] = json.loads(result['image_paths'])
+            if result.get('variations'):
+                result['variations'] = json.loads(result['variations'])
+            if result.get('analysis_metadata'):
+                result['analysis_metadata'] = json.loads(result['analysis_metadata'])
             results.append(result)
         return results
