@@ -85,6 +85,13 @@
 
 ### Migration Roadmap (Long-term)
 
+- [ ] **Phase 0: Repository Setup**
+  - Create private GitHub repo: `examina-cloud`
+  - Set up repo structure (frontend/, backend/, infrastructure/)
+  - Configure GitHub secrets (API keys, deployment configs)
+  - Set up dev environment (Docker, local dev stack)
+  - Invite team members (if any)
+
 - [ ] **Phase 1: Core Library Extraction**
   - Ensure all business logic is in `core/` (framework-agnostic)
   - Create Python package: `examina-core` (installable via pip)
