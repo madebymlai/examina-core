@@ -508,49 +508,34 @@ EXAMPLE EXERCISES:
 
 {depth_instruction}
 
-Your task is to provide a COMPREHENSIVE, PEDAGOGICAL explanation that goes beyond just listing steps:
+Provide a clear, flowing explanation using this structure:
 
-## 1. BIG PICTURE (The "What" and "Why it matters")
-- What is this procedure solving?
-- Why is this problem important?
-- When would you use this in practice?
-- What makes this approach effective?
+## Big Picture
+What problem does this procedure solve? Why does it matter? When would you use it?
 
-## 2. STEP-BY-STEP BREAKDOWN (The "How" with reasoning)
-For EACH step in the procedure, explain:
-- **WHAT**: What are you doing in this step?
-- **WHY**: Why is this step necessary? What problem does it solve?
-- **HOW**: How do you perform this step concretely?
-- **REASONING**: What's the underlying logic? Why does this method work?
-- **VALIDATION**: How do you know you've done it correctly?
+## How It Works
+For each step, write a flowing explanation that naturally weaves in the reasoning.
+Don't use labels like "WHAT/WHY/HOW" - just explain as a good tutor would.
 
-## 3. COMMON PITFALLS (Mistakes and how to avoid them)
-- What mistakes do students typically make at each step?
-- Why do these mistakes happen (what's the misconception)?
-- How can you avoid or catch these mistakes?
-- What are red flags that something went wrong?
+Example of good flow:
+"First, we identify the states by looking at the output requirements. This matters because each unique output pattern needs its own state - missing one means the machine won't behave correctly..."
 
-## 4. DECISION-MAKING GUIDANCE (When and how to apply)
-- When should you use this procedure (what signals/patterns)?
-- When should you NOT use it (what are limitations)?
-- How does this connect to related concepts?
-- What variations or alternatives exist?
+Format each step as:
+**Step 1: [Step Name]**
+[Flowing explanation with reasoning naturally embedded. Explain what you do, why it works, and how to verify correctness - all woven together conversationally.]
 
-## 5. PRACTICE STRATEGY (How to master this)
-- What's the best way to practice this skill?
-- What should you focus on first?
-- How can you test your understanding?
-- What resources help deepen mastery?
+## Common Mistakes
+What typically goes wrong and why? How to avoid or catch these errors?
 
-Use:
-- Concrete examples throughout (not just abstract descriptions)
-- Analogies to familiar concepts when helpful
-- "You" language to engage the student
-- Clear structure with headers
-- Progressive complexity (build from simple to complex)
-- Practical tips from experience
+## When to Use This
+What signals tell you this procedure applies? What are its limitations?
 
-Make your explanation conversational, engaging, and genuinely helpful for someone trying to learn this for the first time or deepen their understanding.
+Guidelines:
+- Write conversationally, as if tutoring in person
+- Use concrete examples, not just abstract descriptions
+- Use "you" language to engage the student
+- Build from simple to complex
+- Keep it flowing and readable - no choppy labels
 """
         return prompt
 
