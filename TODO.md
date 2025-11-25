@@ -2,9 +2,7 @@
 
 > CLI tool and examina-core library tasks. For web app, see `examina-cloud/TODO.md`
 
-## Active: Business Logic Extraction (Plan: swift-finding-cupcake.md)
-
-> Full plan: `~/.claude/plans/swift-finding-cupcake.md`
+## ✅ Completed: Business Logic Extraction (v0.15.0)
 
 - [x] Create core/dto/mastery.py - DTOs for mastery calculation
 - [x] Create core/dto/progress.py - DTOs for progress tracking
@@ -13,12 +11,7 @@
 - [x] Create core/answer_evaluator.py - Unified answer evaluation
 - [x] Add tests/test_progress_analyzer.py - 23 unit tests
 - [x] Add tests/test_answer_evaluator.py - 17 unit tests
-
-### Rollout Steps (requires git push)
-1. Push examina changes to GitHub: `git push origin master`
-2. Rebuild Docker: `docker compose up -d --build backend`
-3. Enable feature flags in `.env`
-4. Monitor logs for discrepancies
+- [x] Shadow mode rollout complete (2025-11-25)
 
 ---
 
@@ -120,10 +113,10 @@
 ## Web Migration
 
 See `examina-cloud/TODO.md` for:
-- Phase 2: API Layer ✅ (mostly complete)
-- Phase 3: Frontend (React)
-- Phase 4: Database Migration
-- Phase 5: Deployment
+- Phase 2: API Layer ✅
+- Phase 4: Frontend ✅ (React + React Query)
+- Phase 5: Docker/Deploy ✅ (CI/CD, healthchecks)
+- Phase 6: Production (SSL, backups, monitoring)
 
 ---
 
