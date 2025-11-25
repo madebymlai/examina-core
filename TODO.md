@@ -49,13 +49,15 @@
 ## Feature Tiers (Free vs Pro)
 
 **Free Tier:**
-- ✅ Exam ingestion (pattern-based splitting - no LLM)
+- ✅ Exam ingestion (pattern-based splitting - no LLM, no page limit)
 - ✅ Basic analysis (with procedure cache)
 - ✅ Quiz and learning modes
 - ✅ Progress tracking
 
 **Pro Tier:**
-- 📋 Note/lecture ingestion (LLM-based smart splitting)
+- 📋 Smart splitting (LLM-based, 50 page limit for cost control)
+- 📋 Note/lecture ingestion (dedicated upload screen)
+- 📋 Source type auto-detection (exam vs exercise_sheet vs homework)
 - 📋 Advanced explanations (Anthropic for premium quality)
 - 📋 Unlimited analysis (no rate limiting)
 
