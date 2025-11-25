@@ -329,6 +329,15 @@
     - [x] Step 6: Apply rate limits to LLM endpoints
 
 - [ ] **Phase 2.5: UI/UX Design** (Figma)
+  - **Documentation:** See `examina-cloud/docs/` for design assets:
+    - [user-flow.md](../examina-cloud/docs/user-flow.md) - Guest-first UX flow, conversion triggers
+    - [figma-prompts.md](../examina-cloud/docs/figma-prompts.md) - Design philosophy + screen prompts
+  - **Design philosophy:** "Calm exam lab with warm soul" - reverse-engineering prof's patterns
+  - **Pattern frequency strategy:**
+    - Single exam: "Dominates this exam (5/8 exercises)" - within-exam frequency
+    - Multi exam: "Seen in 4/6 past exams" - cross-exam frequency
+    - Ghost state: "Upload more exams to see year-over-year patterns"
+  - [ ] Community patterns (future): Aggregate across users on same course/prof
   - Create comprehensive Figma AI prompt covering all features:
     - Course management (add, list, view info, concept map)
     - Content ingestion (upload exams, notes, progress tracking)
@@ -351,6 +360,12 @@
   - Interactive quiz interface
   - Progress dashboards
   - Payment integration (Stripe/Paddle)
+  - **i18n:** Auto-detect language (Italian for IT users, English for rest)
+    - Browser locale detection + manual toggle
+    - All UI strings in translation files
+    - Landing page, dashboard, quiz UI bilingual
+    - [ ] Translate Figma designs from English to Italian (Claude can help)
+    - [ ] Create `en.json` / `it.json` translation files
 
 - [ ] **Phase 4: Database Migration** (Private Repo)
   - User accounts system
@@ -360,6 +375,8 @@
 
 - [ ] **Phase 5: Deployment** (Private Repo)
   - Docker containers
+    - ~~**Known issue:** Import errors in rate_limiter.py~~ ✅ Fixed
+    - **Known issue:** examina-core packaging - `from config import Config` fails when installed as package (needs proper package structure)
   - Kubernetes/AWS ECS
   - CI/CD pipeline (GitHub Actions)
   - Monitoring (Sentry, DataDog)
@@ -397,6 +414,14 @@
    - Functions should accept/return structured data (dicts, dataclasses)
    - Avoid print() - use proper logging
    - Return error codes, not sys.exit()
+
+## Long-Term Goals
+
+- [ ] **Community Patterns** - Aggregate pattern data across users on same course/prof
+  - "Based on 47 students' uploads, Prof. Rossi loves FSM problems (89%)"
+  - Requires: privacy consent, enough user volume, anonymous aggregation
+  - Massive moat once achieved - competitors can't replicate
+  - Prerequisite: Multi-tenant web app with significant user base
 
 ## Low Priority / Future
 
