@@ -30,6 +30,13 @@
 - [ ] Interactive merge review for deduplication - Manual approve/reject (web feature)
 - [ ] Merge history tracking - Allow undo operations (web feature)
 
+### Multilanguage Support
+> Initial support: Italian/English. Architecture should support adding languages easily.
+- [ ] Add `--language` flag for CLI output language (it/en)
+- [ ] Store detected language in exercise metadata
+- [ ] Localize AI prompts based on exercise language
+- [ ] Export language-aware explanations
+
 ### Long-Term Goals
 - [ ] **Community Patterns** - Aggregate pattern data across users on same course/prof
   - "Based on 47 students' uploads, Prof. Rossi loves FSM problems (89%)"
