@@ -53,7 +53,7 @@ class ServiceResult:
     Suitable for serialization to JSON in web APIs.
     """
     success: bool
-    message: str
+    message: str = ""
     data: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
