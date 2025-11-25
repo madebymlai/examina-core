@@ -2,7 +2,21 @@
 
 > CLI tool and examina-core library tasks. For web app, see `examina-cloud/TODO.md`
 
-## Active / Pending
+## Active: Business Logic Extraction (Plan: swift-finding-cupcake.md)
+
+> Full plan: `~/.claude/plans/swift-finding-cupcake.md`
+
+- [x] Create core/dto/mastery.py - DTOs for mastery calculation
+- [x] Create core/dto/progress.py - DTOs for progress tracking
+- [x] Create core/ports/mastery_repository.py - Abstract interface
+- [x] Create core/progress_analyzer.py - Database-agnostic business logic
+- [x] Create core/answer_evaluator.py - Unified answer evaluation
+- [x] Add tests/test_progress_analyzer.py - 23 unit tests
+- [ ] Add tests/test_answer_evaluator.py - Unit tests for evaluator
+
+---
+
+## Pending
 
 ### Known Issues
 - **Groq rate limit**: Free tier (30 req/min) prevents analyzing large courses in one run
