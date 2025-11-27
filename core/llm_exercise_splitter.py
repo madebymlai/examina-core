@@ -129,10 +129,23 @@ class LLMExerciseSplitter:
             # Step 3: Calculate end positions (start of next exercise)
             self._calculate_end_positions(boundaries, len(full_text))
 
-            # Step 4: Extract exercises based on boundaries
+            # Step 4: Detect orphan pages (potential solution pages)
+            total_pages = len(pdf_content.pages)
+            orphan_pages = self._detect_orphan_pages(boundaries, total_pages)
+
+            # Step 5: Extract exercises based on boundaries
             exercises = self._extract_exercises(
                 full_text, boundaries, page_map, pdf_content, course_code
             )
+
+            # Step 6: Match solutions if orphan pages detected
+            if self._should_run_solution_matcher(boundaries, orphan_pages):
+                logger.info(f"Running solution matcher for {len(orphan_pages)} orphan pages")
+                exercises = self._match_solutions_to_exercises(
+                    exercises, orphan_pages, pdf_content
+                )
+            else:
+                logger.debug("No orphan pages - skipping solution matcher")
 
             logger.info(f"LLM extracted {len(exercises)} exercises from PDF")
             return exercises
@@ -666,6 +679,53 @@ class LLMExerciseSplitter:
                 return True  # Appendix-style solutions
 
         return False
+
+    def _match_solutions_to_exercises(
+        self,
+        exercises: List[Exercise],
+        orphan_pages: List[int],
+        pdf_content: PDFContent
+    ) -> List[Exercise]:
+        """Match solutions from orphan pages to exercises.
+
+        Args:
+            exercises: Extracted exercises
+            orphan_pages: Pages not claimed by any exercise
+            pdf_content: PDF content
+
+        Returns:
+            Exercises with solutions populated
+        """
+        from core.solution_matcher import SolutionMatcher
+
+        # Build page texts for orphan pages
+        page_texts = {}
+        for page in pdf_content.pages:
+            if page.page_number in orphan_pages:
+                page_texts[page.page_number] = page.text
+
+        # Build exercise_pages mapping
+        exercise_pages = {}
+        for ex in exercises:
+            if ex.exercise_number:
+                exercise_pages[ex.exercise_number] = ex.page_number
+
+        # Run solution matcher
+        matcher = SolutionMatcher(llm_manager=self.llm)
+        matches = matcher.match_solutions(exercise_pages, orphan_pages, page_texts)
+
+        # Apply matches to exercises
+        matched_count = 0
+        for match in matches:
+            for ex in exercises:
+                if ex.exercise_number == match.exercise_number:
+                    ex.solution = match.solution_text
+                    ex.solution_page = match.solution_page
+                    matched_count += 1
+                    break
+
+        logger.info(f"Matched {matched_count} solutions to exercises")
+        return exercises
 
     def _extract_exercises(
         self,

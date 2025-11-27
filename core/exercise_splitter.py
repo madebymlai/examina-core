@@ -23,6 +23,9 @@ class Exercise:
     has_latex: bool
     latex_content: Optional[str]
     source_pdf: str
+    # Solution fields (populated by SolutionMatcher if Q+A format detected)
+    solution: Optional[str] = None
+    solution_page: Optional[int] = None
 
 
 class ExerciseSplitter:

@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added orphan page detection for future solution matching
 - Added `_should_run_solution_matcher()` for auto-detecting Q+A format PDFs
 
+### Added - Cross-Page Solution Matching
+- New `core/solution_matcher.py` module for matching exercises with solutions on separate pages
+- `SolutionMatch` dataclass for exercise-solution pairs
+- Three matching strategies: adjacent page, appendix pattern, LLM-based
+- Added `solution` and `solution_page` fields to `Exercise` dataclass
+- Auto-detection of Q+A format PDFs via orphan page analysis
+
 ## [0.15.0] - 2025-11-25
 
 ### Added - Web API Layer (Phase 2)
