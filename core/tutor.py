@@ -543,10 +543,11 @@ class Tutor:
         """Build LLM prompt for teaching a KnowledgeItem."""
         import json
 
-        # Build strong language instruction for non-English
-        language_instruction = ""
+        # Build language instruction - always include to ensure correct response language
         if self.language and self.language.lower() != "en":
             language_instruction = f"IMPORTANT: You MUST respond entirely in {self.language}. Do not respond in English.\n\n"
+        else:
+            language_instruction = "Respond in English.\n\n"
 
         # Start with language instruction and strategy prompt
         prompt_parts = [
