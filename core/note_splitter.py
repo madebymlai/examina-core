@@ -65,6 +65,13 @@ class NoteSplitter:
 
         # Capitolo/Chapter explicit markers
         (r'^(?:Capitolo|Chapter|Chapitre|Kapitel)\s+(\d+)[\.:]\s*(.+)?$', 1),
+
+        # Italian-style headers (line ending with colon, 3-50 chars)
+        # e.g., "Sistema operativo:", "Tipologie di calcolatori:"
+        (r'^([A-Z][a-zàèéìòùA-Z\s]{2,48}):[ \t]*$', 2),
+
+        # Italian headers with articles (Il, La, etc.)
+        (r'^((?:Il|La|Lo|I|Le|Gli|Un|Una|Uno)\s+[a-zàèéìòùA-Z][a-zàèéìòùA-Z\s]{2,45}):[ \t]*$', 2),
     ]
 
     # Minimum content length to consider a section valid
