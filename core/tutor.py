@@ -3,6 +3,7 @@ Interactive AI tutor for Examina.
 Provides learning, practice, and exercise generation features.
 """
 
+import re
 import random
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
@@ -14,6 +15,151 @@ from core.concept_explainer import ConceptExplainer
 from core.study_strategies import StudyStrategyManager
 from core.proof_tutor import ProofTutor
 from core.metacognitive import MetacognitiveStrategies, DifficultyLevel, MasteryLevel
+
+
+# Teaching strategy prompts based on learning_approach
+# Philosophy: "The Smartest Kid in the Library" - warm, calm, insider knowledge
+TEACHING_PROMPTS = {
+    "factual": """You are the smartest student in the library, sharing your notes with a friend before their exam.
+Tone: Warm, calm, like whispering exam secrets. Not clinical or robotic.
+
+Bold **only 2-3 key terms** per section - the words a student would highlight in their notes.
+
+Structure your response with these exact markdown headers:
+
+## Overview
+One sentence: "Here's what you need to know about..."
+
+## Fact
+State it clearly, like a highlighted note in your notebook. Use LaTeX for math.
+
+## Exam Context
+"This always shows up when..." - whisper the insider tip about when/how prof tests this.
+
+## Memory Aid
+"The way I remember it..." - share your personal mnemonic or trick.
+
+Keep it SHORT. Under 150 words. Facts stick through repetition, not long explanations.""",
+
+    "conceptual": """You are the smartest student in the library, explaining a concept to a friend.
+Tone: Patient, clear, like showing your margin notes. Not a textbook.
+
+Bold **only 2-3 key terms** per section - the words a student would highlight in their notes.
+
+Structure your response with these exact markdown headers:
+
+## Overview
+"Let me explain this simply..." - one sentence setup.
+
+## Definition
+Clear statement, like a margin note. Use LaTeX for math.
+
+## Exam Patterns
+"Prof loves asking..." - insider knowledge of how this gets tested. Reference the past exams provided.
+
+## Examples
+"Here's how it appeared..." - walk through an example from the past exams.
+
+## Common Mistakes
+"Don't fall for this..." - friendly warning about what loses points.
+
+Be concise but thorough. You're helping a friend, not writing a textbook.""",
+
+    "procedural": """You are the smartest student in the library, showing a friend exactly how to solve problems.
+Tone: Calm confidence, like "watch me do it." Not rushed or robotic.
+
+Bold **only 2-3 key terms** per section - the words a student would highlight in their notes.
+
+Structure your response with these exact markdown headers:
+
+## Overview
+"This is the technique for..." - one sentence.
+
+## When to Use
+"You'll know to use this when..." - pattern recognition tip for exams.
+
+## Steps
+"Here's exactly how..." - numbered steps with brief rationale. Use LaTeX.
+
+## Worked Example
+"Watch me do it..." - walk through the exam exercise step-by-step with annotations.
+
+## Watch Out
+"Careful here, most people mess up by..." - gentle warning about point-losing mistakes.
+
+Focus on execution. This is exam prep, not theory class.""",
+
+    "analytical": """You are the smartest student in the library, showing a friend how to think through hard problems.
+Tone: Strategic, like sharing exam hacks. Not academic or preachy.
+
+Bold **only 2-3 key terms** per section - the words a student would highlight in their notes.
+
+Structure your response with these exact markdown headers:
+
+## Overview
+"These questions want you to think about..." - frame the challenge.
+
+## Problem Types
+"Prof usually frames it like..." - pattern recognition from past exams.
+
+## Approach
+"The trick is to..." - insider strategy for breaking down these problems.
+
+## Worked Example
+"Here's a full-marks answer..." - show the gold standard from past exams.
+
+## Scoring Tips
+"To get all the points..." - exam hacks for maximizing score.
+
+This is about cracking the exam, not philosophical depth."""
+}
+
+# Section types per learning_approach
+SECTIONS_BY_APPROACH = {
+    "factual": ["overview", "fact", "exam_context", "memory_aid"],
+    "conceptual": ["overview", "definition", "exam_patterns", "examples", "common_mistakes"],
+    "procedural": ["overview", "when_to_use", "steps", "worked_example", "watch_out"],
+    "analytical": ["overview", "problem_types", "approach", "worked_example", "scoring_tips"]
+}
+
+
+def parse_markdown_sections(markdown: str, learning_approach: str) -> List[Dict[str, Any]]:
+    """Parse LLM markdown output into sections array.
+
+    Args:
+        markdown: Raw markdown from LLM with ## headers
+        learning_approach: The learning approach used (for section type mapping)
+
+    Returns:
+        List of {type, content} dicts
+    """
+    # Split by ## headers
+    parts = re.split(r'^## ', markdown, flags=re.MULTILINE)
+
+    if len(parts) <= 1:
+        # No headers found - return as single content section
+        return [{"type": "content", "content": markdown.strip()}]
+
+    sections = []
+    # First part is any content before first header (usually empty)
+    if parts[0].strip():
+        sections.append({"type": "preamble", "content": parts[0].strip()})
+
+    # Parse each section
+    for part in parts[1:]:
+        lines = part.split('\n', 1)
+        header = lines[0].strip()
+        content = lines[1].strip() if len(lines) > 1 else ""
+
+        # Convert header to section type (e.g., "Worked Example" -> "worked_example")
+        section_type = header.lower().replace(' ', '_')
+
+        sections.append({
+            "type": section_type,
+            "content": content
+        })
+
+    return sections
 
 
 @dataclass
@@ -290,6 +436,164 @@ class Tutor:
                 "has_worked_examples": len(worked_examples) > 0
             }
         )
+
+    def learn_knowledge_item(
+        self,
+        knowledge_item: Dict[str, Any],
+        exercises: List[Dict[str, Any]],
+        notes: Optional[List[str]] = None,
+        parent_exercise_context: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Teach a KnowledgeItem using learning_approach-specific prompts.
+
+        Cloud-first method: data passed directly from PostgreSQL, no SQLite.
+
+        Args:
+            knowledge_item: KnowledgeItem dict with id, name, knowledge_type, learning_approach, content
+            exercises: List of linked exercise dicts for examples
+            notes: Optional list of user's note content strings (PRO users)
+            parent_exercise_context: Optional parent exercise text for sub-questions
+
+        Returns:
+            Dict with sections array and metadata
+        """
+        import json
+
+        # Get learning_approach (default to conceptual)
+        learning_approach = knowledge_item.get('learning_approach', 'conceptual')
+        if learning_approach not in TEACHING_PROMPTS:
+            learning_approach = 'conceptual'
+
+        # Get the teaching strategy prompt
+        strategy_prompt = TEACHING_PROMPTS[learning_approach]
+
+        # Select best exercise for worked example (prefer exams)
+        example_exercise = self._select_example_exercise(exercises) if exercises else None
+
+        # Build the LLM prompt
+        prompt = self._build_knowledge_item_prompt(
+            knowledge_item=knowledge_item,
+            strategy_prompt=strategy_prompt,
+            example_exercise=example_exercise,
+            notes=notes,
+            parent_exercise_context=parent_exercise_context,
+        )
+
+        # Call LLM
+        response = self.llm.generate(
+            prompt=prompt,
+            model=self.llm.primary_model,
+            temperature=0.3,
+            max_tokens=2000
+        )
+
+        if not response.success:
+            # Return fallback response
+            return {
+                "sections": [{
+                    "type": "fallback",
+                    "content": f"Could not generate explanation: {response.error}"
+                }],
+                "raw_content": "",
+                "learning_approach": learning_approach,
+                "error": True
+            }
+
+        # Parse markdown into sections
+        sections = parse_markdown_sections(response.text, learning_approach)
+
+        return {
+            "sections": sections,
+            "raw_content": response.text,
+            "learning_approach": learning_approach,
+            "using_notes": bool(notes),
+            "has_parent_context": bool(parent_exercise_context),
+            "error": False
+        }
+
+    def _select_example_exercise(self, exercises: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Select best exercise for worked example.
+
+        Prioritizes: exam > exercise_sheet > homework
+        """
+        if not exercises:
+            return None
+
+        priority = {"exam": 1, "exercise_sheet": 2, "homework": 3}
+        sorted_ex = sorted(
+            exercises,
+            key=lambda e: priority.get(e.get('source_type', ''), 99)
+        )
+
+        # Get top tier (all with same best source_type)
+        best_type = sorted_ex[0].get('source_type')
+        top_tier = [e for e in sorted_ex if e.get('source_type') == best_type]
+
+        # Random pick within top tier for variety
+        return random.choice(top_tier)
+
+    def _build_knowledge_item_prompt(
+        self,
+        knowledge_item: Dict[str, Any],
+        strategy_prompt: str,
+        example_exercise: Optional[Dict[str, Any]],
+        notes: Optional[List[str]],
+        parent_exercise_context: Optional[str],
+    ) -> str:
+        """Build LLM prompt for teaching a KnowledgeItem."""
+        import json
+
+        # Start with strategy prompt
+        prompt_parts = [
+            self._language_instruction("Respond"),
+            "",
+            strategy_prompt,
+            "",
+            f"Knowledge Item: {knowledge_item.get('name', 'Unknown')}",
+            f"Type: {knowledge_item.get('knowledge_type', 'unknown')}",
+        ]
+
+        # Add content if available
+        content = knowledge_item.get('content')
+        if content:
+            if isinstance(content, dict):
+                content_str = json.dumps(content, indent=2)
+            else:
+                content_str = str(content)
+            prompt_parts.append(f"Content: {content_str}")
+
+        # Add example exercise for worked example
+        if example_exercise:
+            prompt_parts.append("")
+            prompt_parts.append("Example exercise from past exams:")
+            prompt_parts.append(f"Source: {example_exercise.get('source_pdf', 'Unknown')}")
+            prompt_parts.append(example_exercise.get('text', example_exercise.get('content', '')))
+
+            # Add solution if available
+            solution = example_exercise.get('solution')
+            if solution:
+                prompt_parts.append("")
+                prompt_parts.append("Official solution:")
+                prompt_parts.append(solution)
+
+        # Add parent exercise context for sub-questions
+        if parent_exercise_context:
+            prompt_parts.append("")
+            prompt_parts.append("This is a sub-question. Full exercise context:")
+            prompt_parts.append(parent_exercise_context)
+
+        # Add user's notes (PRO feature)
+        if notes:
+            prompt_parts.append("")
+            prompt_parts.append("The student has uploaded their own notes on this topic:")
+            for note in notes[:3]:  # Limit to 3 notes
+                # Truncate long notes
+                note_text = note[:2000] if len(note) > 2000 else note
+                prompt_parts.append(note_text)
+            prompt_parts.append("")
+            prompt_parts.append("Incorporate relevant parts of their notes in your explanation.")
+
+        return "\n".join(prompt_parts)
 
     def practice(self, course_code: str, topic: Optional[str] = None,
                  difficulty: Optional[str] = None) -> TutorResponse:
