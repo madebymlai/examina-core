@@ -20,8 +20,11 @@ logger = logging.getLogger(__name__)
 SYSTEM_PROMPT = """You are an expert at analyzing academic documents in ANY language. Your task is to identify individual exercises/problems in exam papers, homework sheets, and exercise collections.
 
 IMPORTANT RULES:
-1. An exercise is a COMPLETE problem that a student needs to solve
-2. Sub-questions (a, b, c or i, ii, iii or 1.1, 1.2) belong to their PARENT exercise - do NOT split them
+1. An exercise is a problem that a student needs to solve
+2. Sub-questions (a, b, c or i, ii, iii or 1.1, 1.2) MUST be split into separate entries!
+   - Each sub-question is its own reviewable unit
+   - Mark sub-questions with is_sub_question=true, parent_exercise, and sub_question_marker
+   - Example: "Exercise 2" with parts a, b, c → entries for "2" (parent) AND "2a", "2b", "2c" (children)
 3. Instructions, headers, and administrative text are NOT exercises
 4. Look for "--- Page N ---" markers to identify page numbers
 5. Copy exercise markers EXACTLY as they appear in the document (any language)
@@ -31,12 +34,15 @@ You must return ONLY valid JSON, no explanations."""
 
 USER_PROMPT_TEMPLATE = """Analyze this academic document and identify each distinct exercise/problem.
 
-For each exercise, provide:
-- exercise_number: The numeric identifier only (e.g., "1", "2", "3")
+For each exercise (including sub-questions), provide:
+- exercise_number: The identifier (e.g., "1", "2", "2a", "2b", "3")
 - page: The page number where the exercise STARTS (look at "--- Page N ---" markers)
 - end_page: The page number where the exercise ENDS (same as page if single-page)
 - marker: The EXACT exercise marker text as it appears in the document (copy it verbatim)
 - line_hint: Approximate line number within the page (1 = top of page, estimate based on position)
+- is_sub_question: true if this is a sub-question (part a, b, c, etc.), false otherwise
+- parent_exercise: For sub-questions, the parent exercise number (e.g., "2" for "2a"), null otherwise
+- sub_question_marker: For sub-questions, just the letter/roman numeral ("a", "b", "i", "ii"), null otherwise
 
 IMPORTANT:
 - The "marker" must be the exact text from the document (any language)
@@ -45,18 +51,26 @@ IMPORTANT:
 - line_hint helps disambiguate when the same marker appears multiple times on a page
 - end_page: Only include exercise/question content, NOT solution pages. If unsure, set end_page = page
 
+SUB-QUESTION DETECTION:
+When an exercise has sub-parts (a, b, c or i, ii, iii or 1.1, 1.2), create SEPARATE entries:
+- One entry for the parent exercise (exercise_number="2", is_sub_question=false)
+- Additional entries for each sub-question (exercise_number="2a", is_sub_question=true, parent_exercise="2", sub_question_marker="a")
+Each sub-question becomes its own reviewable unit with its own text.
+
 DOCUMENT:
 ---
-{text}
+{{text}}
 ---
 
 Return a JSON object with this exact structure:
 {{
   "exercises": [
-    {{"exercise_number": "1", "page": 1, "end_page": 1, "marker": "<exact marker from document>", "line_hint": 5}},
-    {{"exercise_number": "2", "page": 3, "end_page": 4, "marker": "<exact marker from document>", "line_hint": 1}}
+    {{"exercise_number": "1", "page": 1, "end_page": 1, "marker": "<exact marker>", "line_hint": 5, "is_sub_question": false, "parent_exercise": null, "sub_question_marker": null}},
+    {{"exercise_number": "2", "page": 2, "end_page": 3, "marker": "<exact marker>", "line_hint": 1, "is_sub_question": false, "parent_exercise": null, "sub_question_marker": null}},
+    {{"exercise_number": "2a", "page": 2, "end_page": 2, "marker": "a)", "line_hint": 5, "is_sub_question": true, "parent_exercise": "2", "sub_question_marker": "a"}},
+    {{"exercise_number": "2b", "page": 2, "end_page": 3, "marker": "b)", "line_hint": 15, "is_sub_question": true, "parent_exercise": "2", "sub_question_marker": "b"}}
   ],
-  "total_count": 2,
+  "total_count": 4,
   "notes": "any observations about the document structure"
 }}
 
@@ -66,7 +80,7 @@ If no exercises are found, return: {{"exercises": [], "total_count": 0, "notes":
 @dataclass
 class ExerciseBoundary:
     """Detected exercise boundary from LLM (page-aware)."""
-    exercise_number: str
+    exercise_number: str         # "2" for parent, "2a" for child
     page: int                    # Start page
     end_page: Optional[int]      # End page (None = same as start)
     marker: str
@@ -74,6 +88,10 @@ class ExerciseBoundary:
     # Position fields populated by marker search
     start_pos: Optional[int] = None
     end_pos: Optional[int] = None
+    # Sub-question support
+    parent_exercise: Optional[str] = None  # "2" if this is "2a"
+    sub_question_marker: Optional[str] = None  # "a", "b", "c", "i", "ii"
+    is_sub_question: bool = False
 
 
 class LLMExerciseSplitter:
@@ -595,6 +613,10 @@ class LLMExerciseSplitter:
                 end_page=end_page,
                 marker=ex.get("marker", ""),
                 line_hint=ex.get("line_hint", 1),
+                # Sub-question support
+                parent_exercise=ex.get("parent_exercise"),
+                sub_question_marker=ex.get("sub_question_marker"),
+                is_sub_question=ex.get("is_sub_question", False),
             )
 
             if not boundary.marker:
@@ -789,7 +811,10 @@ class LLMExerciseSplitter:
                 images=page_images,
                 has_latex=any(p.has_latex for p in pdf_content.pages if p.page_number == page_number),
                 source_pdf=pdf_content.file_path.name,
-                course_code=course_code
+                course_code=course_code,
+                parent_exercise_number=boundary.parent_exercise,
+                sub_question_marker=boundary.sub_question_marker,
+                is_sub_question=boundary.is_sub_question
             )
 
             exercises.append(exercise)
@@ -845,7 +870,10 @@ class LLMExerciseSplitter:
         images: List[bytes],
         has_latex: bool,
         source_pdf: str,
-        course_code: str
+        course_code: str,
+        parent_exercise_number: Optional[str] = None,
+        sub_question_marker: Optional[str] = None,
+        is_sub_question: bool = False
     ) -> Exercise:
         """Create an Exercise object.
 
@@ -857,6 +885,9 @@ class LLMExerciseSplitter:
             has_latex: Whether LaTeX was detected
             source_pdf: Source PDF filename
             course_code: Course code
+            parent_exercise_number: Parent exercise number if sub-question
+            sub_question_marker: Sub-question marker (a, b, c, i, ii)
+            is_sub_question: Whether this is a sub-question
 
         Returns:
             Exercise object
@@ -880,7 +911,10 @@ class LLMExerciseSplitter:
             image_data=images,
             has_latex=has_latex,
             latex_content=None,
-            source_pdf=source_pdf
+            source_pdf=source_pdf,
+            parent_exercise_number=parent_exercise_number,
+            sub_question_marker=sub_question_marker,
+            is_sub_question=is_sub_question
         )
 
 

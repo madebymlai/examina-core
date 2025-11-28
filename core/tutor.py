@@ -61,10 +61,13 @@ class Tutor:
               include_study_strategy: bool = False,
               show_solutions: bool = True,
               include_metacognitive: bool = True,
+              learning_type: str = "conceptual",  # procedural, conceptual, factual, analytical
               show_theory: Optional[bool] = None,
               show_worked_examples: Optional[bool] = None,
               max_theory_sections: Optional[int] = None,
-              max_worked_examples: Optional[int] = None) -> TutorResponse:
+              max_worked_examples: Optional[int] = None,
+              core_loop_data: Optional[Dict[str, Any]] = None,
+              exercises_data: Optional[List[Dict[str, Any]]] = None) -> TutorResponse:
         """Explain a core loop with theory → worked examples → practice flow.
 
         Args:
@@ -76,67 +79,40 @@ class Tutor:
             include_study_strategy: Whether to include metacognitive study strategy (default: False)
             show_solutions: Whether to show official solutions for exercises (default: True)
             include_metacognitive: Whether to include metacognitive study tips (default: True)
+            learning_type: Type of learning content (procedural, conceptual, factual, analytical)
             show_theory: Whether to show theory materials (default: from Config.SHOW_THEORY_BY_DEFAULT)
             show_worked_examples: Whether to show worked examples (default: from Config.SHOW_WORKED_EXAMPLES_BY_DEFAULT)
             max_theory_sections: Max theory sections to show (default: from Config.MAX_THEORY_SECTIONS_IN_LEARN)
             max_worked_examples: Max worked examples to show (default: from Config.MAX_WORKED_EXAMPLES_IN_LEARN)
+            core_loop_data: Optional dict with core_loop data (name, procedure, topic_name, topic_id).
+                           When provided, skips SQLite query - useful for cloud integration with PostgreSQL.
+            exercises_data: Optional list of example exercises. When provided with core_loop_data,
+                           skips SQLite exercises query.
 
         Returns:
             TutorResponse with explanation
         """
-        with Database() as db:
-            # Get core loop details
-            core_loop = db.conn.execute("""
-                SELECT cl.*, t.name as topic_name, t.id as topic_id
-                FROM core_loops cl
-                JOIN topics t ON cl.topic_id = t.id
-                WHERE cl.id = ? AND t.course_code = ?
-            """, (core_loop_id, course_code)).fetchone()
+        # Apply Config defaults for Phase 10 parameters if not explicitly set
+        if show_theory is None:
+            show_theory = Config.SHOW_THEORY_BY_DEFAULT
+        if show_worked_examples is None:
+            show_worked_examples = Config.SHOW_WORKED_EXAMPLES_BY_DEFAULT
+        if max_theory_sections is None:
+            max_theory_sections = Config.MAX_THEORY_SECTIONS_IN_LEARN
+        if max_worked_examples is None:
+            max_worked_examples = Config.MAX_WORKED_EXAMPLES_IN_LEARN
 
-            if not core_loop:
-                return TutorResponse(
-                    content="Core loop not found.",
-                    success=False
-                )
-
-            topic_id = core_loop['topic_id']
-
-            # Apply Config defaults for Phase 10 parameters if not explicitly set
-            if show_theory is None:
-                show_theory = Config.SHOW_THEORY_BY_DEFAULT
-            if show_worked_examples is None:
-                show_worked_examples = Config.SHOW_WORKED_EXAMPLES_BY_DEFAULT
-            if max_theory_sections is None:
-                max_theory_sections = Config.MAX_THEORY_SECTIONS_IN_LEARN
-            if max_worked_examples is None:
-                max_worked_examples = Config.MAX_WORKED_EXAMPLES_IN_LEARN
-
-            # Get learning materials for this topic (theory and worked examples)
-            # Always fetch materials (default flow), but respect show flags and limits
+        # Use provided data or query SQLite
+        if core_loop_data is not None:
+            # Cloud integration: data provided directly (PostgreSQL)
+            core_loop_dict = core_loop_data
+            topic_id = core_loop_data.get('topic_id')
+            examples = exercises_data[:3] if exercises_data else []
+            # Cloud doesn't have theory materials in SQLite, skip them
             theory_materials = []
             worked_examples = []
-
-            if show_theory:
-                theory_materials = db.get_learning_materials_by_topic(
-                    topic_id=topic_id,
-                    material_type='theory',
-                    limit=max_theory_sections
-                )
-
-            if show_worked_examples:
-                worked_examples = db.get_learning_materials_by_topic(
-                    topic_id=topic_id,
-                    material_type='worked_example',
-                    limit=max_worked_examples
-                )
-
-            # Get example exercises (with solutions if available)
-            exercises = db.get_exercises_by_course(course_code)
-            examples = [ex for ex in exercises if ex.get('core_loop_id') == core_loop_id][:3]
-
-            # Track exercises with solutions for later display
             exercises_with_solutions = []
-            if show_solutions:
+            if show_solutions and exercises_data:
                 for ex in examples:
                     if ex.get('solution') and ex.get('solution').strip():
                         exercises_with_solutions.append({
@@ -144,8 +120,60 @@ class Tutor:
                             'solution': ex.get('solution'),
                             'source_pdf': ex.get('source_pdf', '')
                         })
+        else:
+            # Local SQLite mode
+            with Database() as db:
+                # Get core loop details
+                core_loop = db.conn.execute("""
+                    SELECT cl.*, t.name as topic_name, t.id as topic_id
+                    FROM core_loops cl
+                    JOIN topics t ON cl.topic_id = t.id
+                    WHERE cl.id = ? AND t.course_code = ?
+                """, (core_loop_id, course_code)).fetchone()
 
-        core_loop_dict = dict(core_loop)
+                if not core_loop:
+                    return TutorResponse(
+                        content="Core loop not found.",
+                        success=False
+                    )
+
+                topic_id = core_loop['topic_id']
+
+                # Get learning materials for this topic (theory and worked examples)
+                # Always fetch materials (default flow), but respect show flags and limits
+                theory_materials = []
+                worked_examples = []
+
+                if show_theory:
+                    theory_materials = db.get_learning_materials_by_topic(
+                        topic_id=topic_id,
+                        material_type='theory',
+                        limit=max_theory_sections
+                    )
+
+                if show_worked_examples:
+                    worked_examples = db.get_learning_materials_by_topic(
+                        topic_id=topic_id,
+                        material_type='worked_example',
+                        limit=max_worked_examples
+                    )
+
+                # Get example exercises (with solutions if available)
+                exercises = db.get_exercises_by_course(course_code)
+                examples = [ex for ex in exercises if ex.get('core_loop_id') == core_loop_id][:3]
+
+                # Track exercises with solutions for later display
+                exercises_with_solutions = []
+                if show_solutions:
+                    for ex in examples:
+                        if ex.get('solution') and ex.get('solution').strip():
+                            exercises_with_solutions.append({
+                                'exercise_number': ex.get('exercise_number', 'Unknown'),
+                                'solution': ex.get('solution'),
+                                'source_pdf': ex.get('source_pdf', '')
+                            })
+
+            core_loop_dict = dict(core_loop)
 
         # Check if this is a proof exercise (check first example)
         if examples and self.proof_tutor.is_proof_exercise(examples[0].get('text', '')):
@@ -178,7 +206,8 @@ class Tutor:
         prompt = self._build_enhanced_learn_prompt(
             core_loop=core_loop_dict,
             examples=examples,
-            depth=depth
+            depth=depth,
+            learning_type=learning_type,
         )
 
         # Call LLM for deep explanation
@@ -484,8 +513,16 @@ Make it pedagogical and clear for students learning this for the first time.
 
     def _build_enhanced_learn_prompt(self, core_loop: Dict[str, Any],
                                      examples: List[Dict[str, Any]],
-                                     depth: str = "medium") -> str:
-        """Build enhanced prompt with deep WHY reasoning."""
+                                     depth: str = "medium",
+                                     learning_type: str = "conceptual") -> str:
+        """Build enhanced prompt with type-specific learning approach.
+
+        Args:
+            core_loop: Core loop data
+            examples: Example exercises
+            depth: Explanation depth (basic, medium, advanced)
+            learning_type: Type of learning content (procedural, conceptual, factual, analytical)
+        """
         depth_instructions = {
             "basic": "Keep explanations simple and concise. Focus on the core concepts.",
             "medium": "Provide balanced explanations with WHY reasoning and practical examples.",
@@ -494,22 +531,9 @@ Make it pedagogical and clear for students learning this for the first time.
 
         depth_instruction = depth_instructions.get(depth, depth_instructions["medium"])
 
-        prompt = f"""{self._language_instruction("Respond")}
-
-You are an expert educator helping students DEEPLY understand a problem-solving procedure.
-
-TOPIC: {core_loop.get('topic_name', 'Unknown')}
-PROCEDURE: {core_loop['name']}
-EXPLANATION DEPTH: {depth}
-
-PROCEDURE STEPS:
-{self._format_procedure(core_loop.get('procedure'))}
-
-EXAMPLE EXERCISES:
-{self._format_examples(examples)}
-
-{depth_instruction}
-
+        # Build type-specific structure instructions
+        if learning_type == "procedural":
+            structure = """
 Provide a clear, flowing explanation using this structure:
 
 ## Big Picture
@@ -519,25 +543,108 @@ What problem does this procedure solve? Why does it matter? When would you use i
 For each step, write a flowing explanation that naturally weaves in the reasoning.
 Don't use labels like "WHAT/WHY/HOW" - just explain as a good tutor would.
 
-Example of good flow:
-"First, we identify the states by looking at the output requirements. This matters because each unique output pattern needs its own state - missing one means the machine won't behave correctly..."
-
 Format each step as:
 **Step 1: [Step Name]**
-[Flowing explanation with reasoning naturally embedded. Explain what you do, why it works, and how to verify correctness - all woven together conversationally.]
+[Flowing explanation with reasoning naturally embedded. Explain what you do, why it works, and how to verify correctness.]
+
+## Worked Example
+Walk through a concrete example applying all steps.
 
 ## Common Mistakes
 What typically goes wrong and why? How to avoid or catch these errors?
 
 ## When to Use This
-What signals tell you this procedure applies? What are its limitations?
+What signals tell you this procedure applies? What are its limitations?"""
+
+        elif learning_type == "factual":
+            structure = """
+Provide a clear explanation using this structure:
+
+## Key Facts
+Present the essential facts clearly and concisely. Use bullet points or numbered lists.
+
+## Context & Background
+Explain the historical or contextual background that makes these facts meaningful.
+
+## Memory Aids
+Provide mnemonics, acronyms, or memory techniques to help remember key information.
+
+## Connections
+How do these facts connect to other topics or concepts? Show relationships.
+
+## Quick Reference
+A summary table or list for fast recall during study or exams."""
+
+        elif learning_type == "analytical":
+            structure = """
+Provide a clear explanation using this structure:
+
+## Central Question or Thesis
+What is the main argument, question, or issue being analyzed?
+
+## Key Perspectives
+Present different viewpoints or interpretations:
+- **Perspective A**: [View and supporting arguments]
+- **Perspective B**: [Counter-view and supporting arguments]
+
+## Evidence & Cases
+What evidence, examples, or case studies support each perspective?
+
+## Critical Analysis
+How do you evaluate these perspectives? What are the strengths and weaknesses?
+
+## Forming Your Own View
+Guide the student on how to develop and defend their own position.
+
+## Key Arguments to Remember
+Summary of the most important arguments for exam preparation."""
+
+        else:  # conceptual (default)
+            structure = """
+Provide a clear, flowing explanation using this structure:
+
+## Definition
+What is this concept? Give a clear, formal definition.
+
+## Intuition
+Explain it in plain language. Use analogies or real-world examples.
+
+## Why It Matters
+Why is this concept important? How is it used in practice?
+
+## Key Points
+What are the essential things to remember about this concept?
+
+## Related Concepts
+How does this connect to other concepts? What are prerequisites and extensions?
+
+## Common Misconceptions
+What do students often get wrong about this concept?"""
+
+        prompt = f"""{self._language_instruction("Respond")}
+
+You are an expert educator helping students learn.
+
+TOPIC: {core_loop.get('topic_name', 'Unknown')}
+CONCEPT/PROCEDURE: {core_loop['name']}
+LEARNING TYPE: {learning_type}
+EXPLANATION DEPTH: {depth}
+
+CONTENT OUTLINE:
+{self._format_procedure(core_loop.get('procedure'))}
+
+EXAMPLE EXERCISES:
+{self._format_examples(examples)}
+
+{depth_instruction}
+{structure}
 
 Guidelines:
 - Write conversationally, as if tutoring in person
 - Use concrete examples, not just abstract descriptions
 - Use "you" language to engage the student
 - Build from simple to complex
-- Keep it flowing and readable - no choppy labels
+- Keep it flowing and readable
 """
         return prompt
 

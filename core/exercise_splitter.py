@@ -26,6 +26,82 @@ class Exercise:
     # Solution fields (populated by SolutionMatcher if Q+A format detected)
     solution: Optional[str] = None
     solution_page: Optional[int] = None
+    # Sub-question support (added for unified knowledge model)
+    parent_exercise_number: Optional[str] = None  # "2" if this is "2a"
+    sub_question_marker: Optional[str] = None     # "a", "b", "c", "i", "ii", etc.
+    is_sub_question: bool = False
+
+    def get_preview_text(self, max_length: int = 100) -> str:
+        """Get a clean preview of the exercise text for display.
+
+        Uses structural patterns (language-agnostic) to remove exercise markers,
+        form fields, and other non-content text.
+
+        Args:
+            max_length: Maximum length of the preview text
+
+        Returns:
+            Clean preview text suitable for display
+        """
+        # Split into lines and find first meaningful content line
+        lines = self.text.strip().split('\n')
+
+        for line in lines:
+            line = line.strip()
+
+            # Skip empty lines
+            if not line:
+                continue
+
+            # Skip lines with form fields (underscores, dots as blanks)
+            if '_____' in line or '.....' in line or '___' in line:
+                continue
+
+            # Skip very short lines (likely headers or labels)
+            if len(line) < 20:
+                continue
+
+            # Skip lines that are mostly uppercase and short (likely headers)
+            if len(line) < 60 and line.upper() == line:
+                continue
+
+            # Skip lines that start with "word + number" pattern (exercise markers)
+            # This catches "Esercizio 1", "Exercise 2", "Aufgabe 3", etc.
+            if re.match(r'^[A-Za-z\u00C0-\u024F]+\s+\d+\s*$', line):
+                continue
+
+            # Found a good line - clean it up
+            # Remove leading "word + number" if followed by more content
+            cleaned = re.sub(r'^[A-Za-z\u00C0-\u024F]+\s+\d+\s*', '', line).strip()
+            if not cleaned or len(cleaned) < 15:
+                cleaned = line  # Use original if cleaning removed too much
+
+            # Remove leading number patterns like "1.", "1)"
+            cleaned = re.sub(r'^\d+[\.\)\:]\s*', '', cleaned).strip()
+
+            # Get first sentence or truncate
+            if '.' in cleaned[:120] and cleaned.index('.') > 20:
+                preview = cleaned[:cleaned.index('.') + 1]
+            else:
+                preview = cleaned[:max_length]
+
+            # Truncate if needed
+            if len(preview) > max_length:
+                preview = preview[:max_length].rsplit(' ', 1)[0] + "..."
+            elif len(cleaned) > len(preview):
+                preview = preview.rstrip('.') + "..."
+
+            return preview
+
+        # Fallback - no good lines found
+        # Just return first N chars of raw text, cleaned of obvious junk
+        text = self.text.strip()
+        text = re.sub(r'[_]{3,}', '', text)  # Remove underscores
+        text = re.sub(r'\s+', ' ', text)  # Normalize whitespace
+        preview = text[:max_length].strip()
+        if len(text) > max_length:
+            preview = preview.rsplit(' ', 1)[0] + "..."
+        return preview if preview else f"#{self.exercise_number or '?'}"
 
 
 class ExerciseSplitter:
@@ -35,6 +111,7 @@ class ExerciseSplitter:
     STRUCTURAL_PATTERNS = [
         r'(?:^|\n)\s*(\d+)\.\s+',       # "1. " at line start
         r'(?:^|\n)\s*(\d+)\)\s+',       # "1) " at line start
+        r'(?:^|\n)\s*\((\d+)\)\s*',     # "(1)" at line start
         r'(?:^|\n)\s*\[(\d+)\]',        # "[1]" at line start
         r'(?:^|\n)\s*([IVXLCDM]+)\.\s', # Roman numerals "I. ", "II. "
     ]
@@ -67,10 +144,18 @@ class ExerciseSplitter:
         exercises = []
         self.exercise_counter = 0  # Reset counter for each PDF
 
-        # Process each page
+        # Step 1: Analyze FULL document to detect exercise pattern
+        # This is crucial for PDFs where each page has only one exercise marker
+        full_text = "\n".join(page.text for page in pdf_content.pages)
+        self._document_pattern = self._detect_exercise_pattern(full_text)
+
+        # Process each page using the document-wide pattern
         for page in pdf_content.pages:
             page_exercises = self._split_page(page, pdf_content.file_path.name, course_code)
             exercises.extend(page_exercises)
+
+        # Clean up
+        self._document_pattern = None
 
         return exercises
 
@@ -93,13 +178,20 @@ class ExerciseSplitter:
         markers = self._find_exercise_markers(text)
 
         if not markers:
-            # No markers found - check if this is just an instruction page
+            # No markers found on this page
+            # Check if this is just an instruction page
             if self._is_instruction_page(text):
                 return []  # Skip instruction-only pages
 
-            # Not instructions, but no markers either
+            # If we have a document-wide pattern, pages without markers are likely:
+            # - Continuation of previous exercise (don't create new exercise)
+            # - Header/instruction pages (already handled above)
+            # So skip them to avoid inflating exercise count
+            if getattr(self, '_document_pattern', None) is not None:
+                return []  # Skip - this is likely continuation text
+
+            # No document pattern AND no page markers - fallback behavior:
             # Treat entire page as single exercise if it has substantial content
-            # Use a lower threshold to support short exercises (like math problems)
             if len(text.strip()) < 50:  # Too short to be a real exercise
                 return []
 
@@ -191,8 +283,8 @@ class ExerciseSplitter:
         """Find all exercise markers in text using dynamic detection.
 
         Strategy (language-agnostic):
-        1. Dynamically detect the exercise marker pattern used in this document
-        2. If pattern found, use it to find all exercises
+        1. Use document-wide pattern if available (detected from full PDF)
+        2. Fall back to page-level pattern detection
         3. Fall back to structural patterns (1., 2., etc.) if no word pattern found
 
         Args:
@@ -203,8 +295,13 @@ class ExerciseSplitter:
         """
         markers = []
 
-        # Step 1: Try dynamic pattern detection (language-agnostic)
-        detected_pattern = self._detect_exercise_pattern(text)
+        # Step 1: Use document-wide pattern if available (set by split_pdf_content)
+        # This handles PDFs where each page has only one exercise marker
+        detected_pattern = getattr(self, '_document_pattern', None)
+        if detected_pattern is None:
+            # Fall back to page-level detection
+            detected_pattern = self._detect_exercise_pattern(text)
+
         if detected_pattern:
             for match in detected_pattern.finditer(text):
                 position = match.start()
@@ -219,18 +316,19 @@ class ExerciseSplitter:
 
         # Step 2: Fall back to structural patterns (1., 2., etc.)
         for pattern in self.structural_patterns:
-            for match in pattern.finditer(text):
-                position = match.start()
-                ex_number = match.group(1) if match.groups() else None
+            # Collect ALL matches first to calculate gaps correctly
+            all_matches = [(m.start(), m.group(1) if m.groups() else None)
+                          for m in pattern.finditer(text)]
 
-                # Skip very short fragments (likely list items, not exercises)
-                next_marker_pos = len(text)
-                for other_match in pattern.finditer(text[position+1:]):
-                    next_marker_pos = position + 1 + other_match.start()
-                    break
+            for i, (position, ex_number) in enumerate(all_matches):
+                # Calculate fragment length (distance to next marker or end)
+                if i + 1 < len(all_matches):
+                    next_marker_pos = all_matches[i + 1][0]
+                else:
+                    next_marker_pos = len(text)
 
                 fragment_length = next_marker_pos - position
-                if fragment_length < 100:  # Minimum 100 chars for an exercise
+                if fragment_length < 30:  # Minimum 30 chars (allows short Q&A questions)
                     continue
 
                 markers.append((position, ex_number))
@@ -390,9 +488,10 @@ class ExerciseSplitter:
         # Remove excessive whitespace
         text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
 
-        # Remove page numbers (common pattern)
-        text = re.sub(r'(?:^|\n)Pagina\s+\d+(?:\n|$)', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'(?:^|\n)Page\s+\d+(?:\n|$)', '', text, flags=re.IGNORECASE)
+        # Remove page numbers (language-agnostic structural pattern)
+        # Pattern: short line with just a number, or "word + number" where line is short
+        text = re.sub(r'(?:^|\n)\s*\d+\s*(?:\n|$)', '\n', text)  # Standalone numbers
+        text = re.sub(r'(?:^|\n)\s*[A-Za-z]+\s+\d+\s*(?:\n|$)', '\n', text)  # "Word 123" short lines
 
         # Strip leading/trailing whitespace
         text = text.strip()

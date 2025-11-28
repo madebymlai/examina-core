@@ -16,6 +16,7 @@ from core.adaptive_teaching import AdaptiveTeachingManager
 from core.provider_router import ProviderRouter
 from core.task_types import TaskType
 from core.answer_evaluator import RecallEvaluationResult
+from core.note_splitter import NoteSplitter, NoteSection
 
 __all__ = [
     "ExerciseAnalyzer",
@@ -27,4 +28,6 @@ __all__ = [
     "ProviderRouter",
     "TaskType",
     "RecallEvaluationResult",
+    "NoteSplitter",
+    "NoteSection",
 ]

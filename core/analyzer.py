@@ -38,6 +38,22 @@ class ProcedureInfo:
     steps: List[str]
     point_number: Optional[int] = None
     transformation: Optional[Dict[str, str]] = None  # {"source_format": "X", "target_format": "Y"}
+    learning_type: str = "conceptual"  # procedural, conceptual, factual, analytical
+
+
+@dataclass
+class KnowledgeItemInfo:
+    """Unified knowledge item extracted from exercise analysis.
+
+    Replaces both ProcedureInfo and prerequisite_concepts with a single
+    unified format that supports all knowledge types.
+    """
+    name: str  # snake_case identifier
+    knowledge_type: str  # definition, theorem, proof, procedure, fact, formula, algorithm, etc.
+    learning_approach: Optional[str] = None  # procedural, conceptual, factual, analytical
+    content: Optional[Dict[str, Any]] = None  # Flexible JSON content based on type
+    parent_name: Optional[str] = None  # Abstract parent if this is a variation
+    variation_parameter: Optional[str] = None  # What makes this specific (e.g., "2x2 matrix")
 
 
 @dataclass
@@ -62,7 +78,14 @@ class AnalysisResult:
     theory_category: Optional[str] = None  # 'definition', 'theorem', 'proof', 'explanation', 'derivation', 'concept'
     theorem_name: Optional[str] = None  # Name of theorem if applicable
     concept_id: Optional[str] = None  # ID of main concept
-    prerequisite_concepts: Optional[List[str]] = None  # List of prerequisite concept IDs
+    # prerequisite_concepts: List of concept objects with per-concept variation info
+    # Each object: {"concept_id": str, "parent_concept_name": str|None, "variation_parameter": str|None}
+    # Also accepts legacy string format for backward compatibility
+    prerequisite_concepts: Optional[List[Any]] = None  # List of concept dicts or strings (backward compat)
+
+    # Unified Knowledge Model: All knowledge items extracted from the exercise
+    # Replaces both procedures and prerequisite_concepts with unified format
+    knowledge_items: Optional[List['KnowledgeItemInfo']] = None
 
     # Backward compatibility fields (derived from first procedure)
     @property
@@ -210,12 +233,16 @@ class ExerciseAnalyzer:
         if "procedures" in data and data["procedures"]:
             # New format: multiple procedures
             for proc_data in data["procedures"]:
+                # Debug: log learning_type from LLM
+                llm_learning_type = proc_data.get("learning_type")
+                print(f"[DEBUG] Procedure '{proc_data.get('name')}' learning_type from LLM: {llm_learning_type}")
                 procedures.append(ProcedureInfo(
                     name=proc_data.get("name", "Unknown Procedure"),
                     type=proc_data.get("type", "other"),
                     steps=proc_data.get("steps", []),
                     point_number=proc_data.get("point_number"),
-                    transformation=proc_data.get("transformation")
+                    transformation=proc_data.get("transformation"),
+                    learning_type=proc_data.get("learning_type", "conceptual"),
                 ))
         elif "core_loop_name" in data and data["core_loop_name"]:
             # Old format: single procedure - convert to new format
@@ -224,7 +251,8 @@ class ExerciseAnalyzer:
                 type="other",  # Unknown type in old format
                 steps=data.get("procedure", []),
                 point_number=None,
-                transformation=None
+                transformation=None,
+                learning_type="conceptual",  # Default for old format
             ))
 
         # Normalize procedures to primary language if monolingual mode enabled
@@ -241,7 +269,22 @@ class ExerciseAnalyzer:
         theory_category = data.get("theory_category")
         theorem_name = data.get("theorem_name")
         concept_id = data.get("concept_id")
+        # prerequisite_concepts now contains per-concept variation info
+        # Format: [{"concept_id": str, "parent_concept_name": str|None, "variation_parameter": str|None}, ...]
         prerequisite_concepts = data.get("prerequisite_concepts")
+
+        # Parse unified knowledge_items (new unified model)
+        knowledge_items = []
+        if "knowledge_items" in data and data["knowledge_items"]:
+            for item_data in data["knowledge_items"]:
+                knowledge_items.append(KnowledgeItemInfo(
+                    name=item_data.get("name", "unknown"),
+                    knowledge_type=item_data.get("knowledge_type", "key_concept"),
+                    learning_approach=item_data.get("learning_approach"),
+                    content=item_data.get("content"),
+                    parent_name=item_data.get("parent_name"),
+                    variation_parameter=item_data.get("variation_parameter"),
+                ))
 
         # Extract fields
         return AnalysisResult(
@@ -260,7 +303,8 @@ class ExerciseAnalyzer:
             theory_category=theory_category,
             theorem_name=theorem_name,
             concept_id=concept_id,
-            prerequisite_concepts=prerequisite_concepts
+            prerequisite_concepts=prerequisite_concepts,
+            knowledge_items=knowledge_items if knowledge_items else None,
         )
 
     def _build_analysis_prompt(self, exercise_text: str, course_name: str,
@@ -324,6 +368,7 @@ Respond in JSON format with:
       "type": "design|transformation|verification|minimization|analysis|other",
       "steps": ["step 1", "step 2", ...],  // solving steps for this procedure
       "point_number": 1,  // which numbered point (1, 2, 3, etc.) - null if not applicable
+      "learning_type": "procedural|conceptual|factual|analytical",  // How to best teach this
       "transformation": {{  // ONLY if type=transformation
         "source_format": "format name",  // source entity/format from exercise
         "target_format": "format name"   // target entity/format from exercise
@@ -341,7 +386,23 @@ Respond in JSON format with:
   "theory_category": "definition|theorem|axiom|property|explanation|derivation|concept|null",  // Phase 9.2: Theory category
   "theorem_name": "specific theorem name if asking about a theorem",  // Phase 9.2: exact name from exercise
   "concept_id": "normalized_concept_id",  // Phase 9.2: snake_case version of concept name
-  "prerequisite_concepts": ["concept_id_1", "concept_id_2"]  // Phase 9.2: concepts needed to understand this
+  "prerequisite_concepts": [  // Phase 9.2: concepts needed, with optional variation info PER CONCEPT
+    {{
+      "concept_id": "snake_case_concept_name",
+      "parent_concept_name": "general/abstract concept name or null if not a variation",
+      "variation_parameter": "what makes this specific (e.g., 'base=2') or null"
+    }}
+  ],
+  "knowledge_items": [  // UNIFIED KNOWLEDGE MODEL: All knowledge extracted from this exercise
+    {{
+      "name": "snake_case_name",  // Normalized identifier
+      "knowledge_type": "procedure|definition|theorem|proof|fact|formula|algorithm|explanation|key_concept|derivation|principle",
+      "learning_approach": "procedural|conceptual|factual|analytical",  // HOW to best teach this
+      "content": {{}},  // Flexible JSON - for procedures: {{"steps": [...]}}, for definitions: {{"definition": "..."}}, etc.
+      "parent_name": "abstract parent name or null",  // For variations: the general concept this is a variation of
+      "variation_parameter": "what makes this specific (e.g., '2x2 matrix') or null"
+    }}
+  ]
 }}
 
 IMPORTANT ANALYSIS GUIDELINES:
@@ -387,6 +448,13 @@ MULTI-PROCEDURE DETECTION:
 - Set "point_number" to indicate which numbered point it belongs to
 - If exercise requires multiple procedures (e.g., "design AND verify"), list ALL of them
 - For transformations/conversions (A→B, X→Y, etc.), set type="transformation" and fill "transformation" object
+
+LEARNING TYPE DETECTION (for each procedure):
+Determine HOW to best teach this procedure:
+- "procedural": Step-by-step problem solving - math, algorithms, calculations, design processes
+- "conceptual": Understanding definitions, principles, theories - explaining concepts and "why"
+- "factual": Memorizing facts, dates, events, terminology - recall-based knowledge
+- "analytical": Critical thinking, arguments, case analysis - evaluating perspectives and evidence
 
 PROCEDURE NAMING (CRITICAL - be specific, not generic!):
 Procedure names must include the SPECIFIC ENTITY being acted upon, not category/topic names.
@@ -494,6 +562,26 @@ PREREQUISITE CONCEPT DETECTION (CRITICAL - for ALL exercise types):
 - List 3-7 most important concepts as normalized IDs
 - ALWAYS fill this field - every exercise uses theoretical concepts!
 
+CONCEPT VARIATION DETECTION (per-concept in prerequisite_concepts array):
+For EACH concept in prerequisite_concepts, determine if it's a VARIATION of a general concept:
+
+Each concept object has:
+- concept_id: The normalized snake_case concept name (REQUIRED)
+- parent_concept_name: The GENERAL/ABSTRACT form if this is a variation, null otherwise
+- variation_parameter: What makes this specific variation different, null if not a variation
+
+Examples of prerequisite_concepts array:
+[
+  {{"concept_id": "base_2_conversion", "parent_concept_name": "Number Base Conversion", "variation_parameter": "base=2"}},
+  {{"concept_id": "matrix_multiplication", "parent_concept_name": null, "variation_parameter": null}},
+  {{"concept_id": "eigenvalue_computation", "parent_concept_name": "Eigenvalue Theory", "variation_parameter": "method=characteristic_polynomial"}}
+]
+
+VARIATION DETECTION RULE (domain-agnostic):
+- If learning one concept means you can handle another → they share a parent (are variations)
+- If each requires fundamentally different knowledge → they are separate concepts (not variations)
+- parent_concept_name should be the GENERAL form (may not exist yet - system creates it)
+
 CONCEPT ID NORMALIZATION:
 - Convert concept names to lowercase IDs with underscores
 - Pattern: "Concept Name" → "concept_name"
@@ -505,10 +593,34 @@ IMPORTANT:
 - For hybrid exercises, fill BOTH procedures array AND theory fields
 - If exercise asks definition AND computation, mark as hybrid with both
 
+UNIFIED KNOWLEDGE MODEL (knowledge_items array):
+Extract ALL knowledge units from the exercise into the knowledge_items array:
+
+1. For PROCEDURES (step-by-step methods):
+   - knowledge_type: "procedure" or "algorithm"
+   - learning_approach: usually "procedural"
+   - content: {{"steps": ["step 1", "step 2", ...], "when_to_use": "...", "common_mistakes": [...]}}
+
+2. For DEFINITIONS/CONCEPTS:
+   - knowledge_type: "definition", "key_concept", "theorem", "formula"
+   - learning_approach: usually "conceptual" or "factual"
+   - content: {{"definition": "...", "examples": [...], "related_concepts": [...]}}
+
+3. For PROOFS:
+   - knowledge_type: "proof" or "derivation"
+   - learning_approach: "procedural" or "analytical"
+   - content: {{"proof_structure": [...], "key_insight": "..."}}
+
+VARIATION DETECTION in knowledge_items:
+- If a knowledge item is a specific case of a general concept, set parent_name and variation_parameter
+- Example: "eigenvalue_2x2" → parent_name="eigenvalue", variation_parameter="2x2 matrix"
+- If NOT a variation: parent_name=null, variation_parameter=null
+
 BACKWARD COMPATIBILITY:
 - Even if exercise has only ONE procedure, still return it in "procedures" array
 - Extract actual solving steps if you can identify them
 - The first procedure in the array is considered the PRIMARY procedure
+- ALSO populate knowledge_items with the same data in unified format
 
 Respond ONLY with valid JSON, no other text.
 """
@@ -616,7 +728,8 @@ CONTEXT RULES (CRITICAL):
             exercise_type='procedural',  # Default type
             type_confidence=0.0,
             proof_keywords=None,
-            theory_metadata=None
+            theory_metadata=None,
+            knowledge_items=None,  # Empty for unified model
         )
 
     def _build_result_from_cache(self, cache_hit: 'CacheHit', exercise_text: str) -> AnalysisResult:
@@ -1027,6 +1140,10 @@ No markdown code blocks, just JSON."""
                 concept_id = data.get("concept_id")
                 prerequisite_concepts = data.get("prerequisite_concepts")
 
+                # Concept variation support
+                parent_concept_name = data.get("parent_concept_name")
+                variation_parameter = data.get("variation_parameter")
+
                 # Build result
                 result = AnalysisResult(
                     is_valid_exercise=data.get("is_valid_exercise", True),
@@ -1044,7 +1161,9 @@ No markdown code blocks, just JSON."""
                     theory_category=theory_category,
                     theorem_name=theorem_name,
                     concept_id=concept_id,
-                    prerequisite_concepts=prerequisite_concepts
+                    prerequisite_concepts=prerequisite_concepts,
+                    parent_concept_name=parent_concept_name,
+                    variation_parameter=variation_parameter
                 )
 
                 # Check if analysis was successful
