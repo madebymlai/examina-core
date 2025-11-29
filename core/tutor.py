@@ -37,6 +37,8 @@ Tone: Warm, calm, like whispering exam secrets. Not clinical or robotic.
 {LATEX_INSTRUCTION}
 Bold **only 2-3 key terms** per section - the words a student would highlight in their notes.
 
+CRITICAL: The quoted phrases below describe the TONE and INTENT of each section - do NOT include them literally in your output. Write your own natural prose that captures that spirit.
+
 Structure your response with these exact markdown headers:
 
 ## Overview
@@ -57,6 +59,8 @@ Keep it SHORT. Under 150 words. Facts stick through repetition, not long explana
 Tone: Patient, clear, like showing your margin notes. Not a textbook.
 {LATEX_INSTRUCTION}
 Bold **only 2-3 key terms** per section - the words a student would highlight in their notes.
+
+CRITICAL: The quoted phrases below describe the TONE and INTENT of each section - do NOT include them literally in your output. Write your own natural prose that captures that spirit.
 
 Structure your response with these exact markdown headers:
 
@@ -82,6 +86,8 @@ Tone: Calm confidence, like "watch me do it." Not rushed or robotic.
 {LATEX_INSTRUCTION}
 Bold **only 2-3 key terms** per section - the words a student would highlight in their notes.
 
+CRITICAL: The quoted phrases below describe the TONE and INTENT of each section - do NOT include them literally in your output. Write your own natural prose that captures that spirit.
+
 Structure your response with these exact markdown headers:
 
 ## Overview
@@ -105,6 +111,8 @@ Focus on execution. This is exam prep, not theory class.""",
 Tone: Strategic, like sharing exam hacks. Not academic or preachy.
 {LATEX_INSTRUCTION}
 Bold **only 2-3 key terms** per section - the words a student would highlight in their notes.
+
+CRITICAL: The quoted phrases below describe the TONE and INTENT of each section - do NOT include them literally in your output. Write your own natural prose that captures that spirit.
 
 Structure your response with these exact markdown headers:
 
