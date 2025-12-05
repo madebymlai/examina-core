@@ -23,10 +23,10 @@ def filter_and_organize_knowledge(
     Filter extracted knowledge items and infer topics using LLM.
 
     Uses coherence-based filtering:
-    - Identify the dominant concept cluster
+    - Identify concept clusters (1-5 topics)
     - Filter out outliers (context/scenario items)
     - Normalize parent names to existing ones
-    - INFER appropriate topic from valid items (not from extraction)
+    - INFER appropriate topics and assign items to them
 
     Args:
         llm: LLMManager instance
@@ -36,22 +36,27 @@ def filter_and_organize_knowledge(
 
     Returns:
         {
-            "valid_items": [...],      # Items that passed filtering
-            "filtered_items": [...],   # Items removed (with reasons)
-            "inferred_topic": "...",   # Topic derived from valid items
+            "valid_items": [...],      # Items that passed filtering, each with "topic" field
+            "filtered_items": [...],   # Items removed (with idx for debugging)
+            "filtered_indices": [...], # Indices of filtered items
+            "inferred_topics": [...],  # List of topic names derived from valid items
         }
     """
     if not items:
         return {
             "valid_items": [],
             "filtered_items": [],
-            "inferred_topic": None,
+            "filtered_indices": [],
+            "inferred_topics": [],
         }
 
-    prompt = f"""Analyze these extracted knowledge items for coherence.
+    # Add index to each item for reliable matching (LLM may modify names)
+    indexed_items = [{"idx": i, **item} for i, item in enumerate(items)]
+
+    prompt = f"""Analyze these extracted knowledge items and cluster them into topics.
 
 ITEMS:
-{json.dumps(items, indent=2, ensure_ascii=False)}
+{json.dumps(indexed_items, indent=2, ensure_ascii=False)}
 
 EXISTING PARENT CONCEPTS IN COURSE:
 {json.dumps(existing_parents, ensure_ascii=False) if existing_parents else "[]"}
@@ -60,27 +65,40 @@ EXISTING TOPICS IN COURSE:
 {json.dumps(existing_topics, ensure_ascii=False) if existing_topics else "[]"}
 
 TASK:
-1. Identify the DOMINANT THEME - what field of study do most items belong to?
-2. Flag OUTLIERS - items that don't fit the dominant theme
-   - These are likely scenario/context from word problems, not course concepts
-   - Test: "Is this something a student learns/studies, or just where the problem takes place?"
-   - Test: "Would this appear in the course textbook as a topic to learn?"
+1. CLUSTER items into 1-5 DISTINCT TOPICS based on subject matter
+   - Each topic should be chapter-level (e.g., "Automi a Stati Finiti", "Circuiti Logici", "Sistemi di Numerazione")
+   - NOT too broad (e.g., "Computer Science" is too broad)
+   - NOT too specific (e.g., "Moore Machine State Table" is too specific)
+   - Prefer EXISTING TOPICS if items fit them
+   - Use the same language as the items (Italian items → Italian topics)
+
+2. AGGRESSIVELY Flag OUTLIERS using these tests:
+
+   TEST A - Academic vs Context: "Is this item the SUBJECT of study, or just the SETTING/CONTEXT of a word problem?"
+   TEST B - Textbook test: "Would this appear as a chapter heading or section title in this course's textbook?"
+   TEST C - Lecture test: "Would a professor put this on a lecture slide as a concept to teach?"
+   TEST D - Abstraction test: "Is this a general theoretical concept, or a specific real-world instance?"
+
+   If ANY test fails → FILTER the item out
+
+   Keep ONLY items where ALL tests pass
+
 3. Normalize PARENTS - if an item suggests a parent similar to an existing one, use the existing name
-4. INFER TOPIC - based on valid items, what topic should they belong to?
-   - Prefer existing topics if they fit
-   - Topics should be chapter-level (not too broad, not too specific)
+
+4. ASSIGN each valid item to exactly ONE topic
+
+CRITICAL: Each item has an "idx" field. You MUST return this idx unchanged for matching.
 
 RETURN JSON:
 {{
-    "dominant_theme": "description of main concept area",
     "valid_items": [
-        {{"name": "...", "knowledge_type": "...", "parent_name": "...", "reason": "fits theme"}}
+        {{"idx": 0, "topic": "topic name for this item"}}
     ],
-    "filtered_items": [
-        {{"name": "...", "reason": "why filtered"}}
-    ],
-    "inferred_topic": "topic name derived from valid items"
+    "filtered_indices": [0, 1, 3],
+    "inferred_topics": ["topic1", "topic2", ...]
 }}
+
+NOTE: valid_items only needs "idx" and "topic". Original item data will be matched by idx.
 """
 
     try:
@@ -90,35 +108,68 @@ RETURN JSON:
             json_mode=True,
         )
 
-        if response and response.content:
-            result = json.loads(response.content)
+        if response and response.text:
+            result = json.loads(response.text)
+
+            # Reconstruct valid_items with original data using idx
+            valid_items_with_topics = []
+            idx_to_topic = {item["idx"]: item["topic"] for item in result.get("valid_items", [])}
+
+            for i, original_item in enumerate(items):
+                if i in idx_to_topic:
+                    valid_items_with_topics.append({
+                        **original_item,
+                        "topic": idx_to_topic[i],
+                    })
+
+            # Build filtered_items from filtered_indices for logging
+            filtered_indices = result.get("filtered_indices", [])
+            filtered_items = [
+                {"name": items[i].get("name", "unknown"), "idx": i}
+                for i in filtered_indices
+                if i < len(items)
+            ]
 
             # Log filtered items for debugging
-            filtered = result.get("filtered_items", [])
-            if filtered:
-                for item in filtered:
-                    logger.info(f"Filtered: {item.get('name')} - {item.get('reason')}")
+            if filtered_items:
+                for item in filtered_items:
+                    logger.info(f"Filtered: {item.get('name')} (idx={item.get('idx')})")
 
-            return result
+            return {
+                "valid_items": valid_items_with_topics,
+                "filtered_items": filtered_items,
+                "filtered_indices": filtered_indices,
+                "inferred_topics": result.get("inferred_topics", []),
+            }
         else:
             logger.warning("Post-processor got empty response, returning all items")
+            fallback_topic = existing_topics[0] if existing_topics else "General"
+            # Add topic field to each item for fallback
+            valid_items = [{**item, "topic": fallback_topic} for item in items]
             return {
-                "valid_items": items,
+                "valid_items": valid_items,
                 "filtered_items": [],
-                "inferred_topic": existing_topics[0] if existing_topics else None,
+                "filtered_indices": [],
+                "inferred_topics": [fallback_topic],
             }
 
     except json.JSONDecodeError as e:
         logger.error(f"Post-processor JSON parse error: {e}")
+        fallback_topic = existing_topics[0] if existing_topics else "General"
+        valid_items = [{**item, "topic": fallback_topic} for item in items]
         return {
-            "valid_items": items,
+            "valid_items": valid_items,
             "filtered_items": [],
-            "inferred_topic": existing_topics[0] if existing_topics else None,
+            "filtered_indices": [],
+            "inferred_topics": [fallback_topic],
         }
     except Exception as e:
         logger.error(f"Post-processor error: {e}")
+        fallback_topic = existing_topics[0] if existing_topics else "General"
+        valid_items = [{**item, "topic": fallback_topic} for item in items]
         return {
-            "valid_items": items,
+            "valid_items": valid_items,
             "filtered_items": [],
-            "inferred_topic": existing_topics[0] if existing_topics else None,
+            "filtered_indices": [],
+            "inferred_topics": [fallback_topic],
         }
