@@ -2,8 +2,9 @@
 Test exercise splitter with real PDF files using actual LLM.
 """
 import sys
-import os
 from pathlib import Path
+from dataclasses import dataclass
+from typing import Optional
 
 # Add examina to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -16,15 +17,34 @@ from models.llm_manager import LLMManager
 LLM_PROVIDER = "deepseek"
 
 
-def test_pdf(pdf_path: str, course_code: str, expected_min: int = 5):
-    """Test a single PDF file."""
+@dataclass
+class ExpectedResult:
+    """Expected results for a PDF test."""
+    total: int
+    parents: int
+    subs: int
+    with_solutions: int
+
+
+@dataclass
+class PDFTestCase:
+    """Test case for a PDF file."""
+    path: str
+    course_code: str
+    expected: ExpectedResult
+    description: str
+
+
+def test_pdf(test_case: PDFTestCase) -> bool:
+    """Test a single PDF file with exact expected values."""
     print(f"\n{'='*60}")
-    print(f"Testing: {Path(pdf_path).name}")
+    print(f"Testing: {Path(test_case.path).name}")
+    print(f"  {test_case.description}")
     print("=" * 60)
 
     # Process PDF
     processor = PDFProcessor()
-    pdf_content = processor.process_pdf(Path(pdf_path))
+    pdf_content = processor.process_pdf(Path(test_case.path))
 
     print(f"  Pages: {len(pdf_content.pages)}")
     print(f"  Total text: {sum(len(p.text) for p in pdf_content.pages)} chars")
@@ -35,61 +55,99 @@ def test_pdf(pdf_path: str, course_code: str, expected_min: int = 5):
 
     # Split with smart splitter
     splitter = ExerciseSplitter()
-    exercises = splitter.split_pdf_smart(pdf_content, course_code, llm)
+    exercises = splitter.split_pdf_smart(pdf_content, test_case.course_code, llm)
 
-    print(f"\n  Results:")
-    print(f"    Exercises found: {len(exercises)}")
-
-    # Count parents vs subs
+    # Count results
     parents = [e for e in exercises if not e.is_sub_question]
     subs = [e for e in exercises if e.is_sub_question]
     with_solutions = [e for e in exercises if e.solution]
 
-    print(f"    Parent exercises: {len(parents)}")
-    print(f"    Sub-questions: {len(subs)}")
-    print(f"    With solutions: {len(with_solutions)}")
+    actual = ExpectedResult(
+        total=len(exercises),
+        parents=len(parents),
+        subs=len(subs),
+        with_solutions=len(with_solutions),
+    )
+
+    # Compare with expected
+    exp = test_case.expected
+    errors = []
+
+    if actual.total != exp.total:
+        errors.append(f"total: got {actual.total}, expected {exp.total}")
+    if actual.parents != exp.parents:
+        errors.append(f"parents: got {actual.parents}, expected {exp.parents}")
+    if actual.subs != exp.subs:
+        errors.append(f"subs: got {actual.subs}, expected {exp.subs}")
+    if actual.with_solutions != exp.with_solutions:
+        errors.append(f"with_solutions: got {actual.with_solutions}, expected {exp.with_solutions}")
+
+    # Print results
+    print(f"\n  Results:")
+    print(f"    Total:          {actual.total} (expected {exp.total})")
+    print(f"    Parents:        {actual.parents} (expected {exp.parents})")
+    print(f"    Subs:           {actual.subs} (expected {exp.subs})")
+    print(f"    With solutions: {actual.with_solutions} (expected {exp.with_solutions})")
 
     # Show first few exercises
     print(f"\n  Sample exercises:")
     for i, ex in enumerate(exercises[:5]):
-        preview = ex.text[:100].replace("\n", " ").strip()
+        preview = ex.text[:80].replace("\n", " ").strip()
         sol_marker = " [+sol]" if ex.solution else ""
         sub_marker = f" (sub of {ex.parent_exercise_number})" if ex.is_sub_question else ""
         print(f"    {i+1}. [{ex.exercise_number}]{sub_marker}{sol_marker}: {preview}...")
 
-    # Verify minimum
-    if len(exercises) >= expected_min:
-        print(f"\n  ✓ PASS: Found {len(exercises)} exercises (>= {expected_min})")
-        return True
-    else:
-        print(f"\n  ✗ FAIL: Found only {len(exercises)} exercises (expected >= {expected_min})")
+    if errors:
+        print(f"\n  ✗ FAIL:")
+        for err in errors:
+            print(f"    - {err}")
         return False
+    else:
+        print(f"\n  ✓ PASS: All counts match exactly")
+        return True
+
+
+# Test cases with exact expected values
+TEST_CASES = [
+    PDFTestCase(
+        path="/home/laimk/git/examina-cloud/test-data/ADE-ESAMI/Prova intermedia 2024-01-29 - SOLUZIONI v4.pdf",
+        course_code="ADE",
+        expected=ExpectedResult(total=10, parents=3, subs=7, with_solutions=9),
+        description="ADE exam with 2 main exercises, sub-questions, and solutions",
+    ),
+    PDFTestCase(
+        path="/home/laimk/git/examina-cloud/test-data/ADE-ESAMI/Compito - Prima Prova Intermedia 10-02-2020 - Soluzioni.pdf",
+        course_code="ADE",
+        expected=ExpectedResult(total=7, parents=4, subs=3, with_solutions=7),
+        description="ADE exam with 4 exercises (1 has 3 sub-parts), all with solutions",
+    ),
+    PDFTestCase(
+        path="/home/laimk/git/examina-cloud/test-data/AL-ESAMI/20120612 - appello.pdf",
+        course_code="AL",
+        expected=ExpectedResult(total=8, parents=0, subs=8, with_solutions=0),
+        description="AL exam with combined format (1a, 1b, 2a, 2b, etc.)",
+    ),
+    PDFTestCase(
+        path="/home/laimk/git/examina-cloud/test-data/SO-ESAMI/SOfebbraio2020.pdf",
+        course_code="SO",
+        expected=ExpectedResult(total=19, parents=5, subs=14, with_solutions=0),
+        description="SO exam with 5 main exercises and 14 sub-questions",
+    ),
+]
 
 
 if __name__ == "__main__":
-    TEST_PDFS = [
-        # (path, course_code, expected_min_exercises)
-        # ADE exam with 2 exercises and 12 sub-questions (14 total)
-        ("/home/laimk/git/examina-cloud/test-data/ADE-ESAMI/Prova intermedia 2024-01-29 - SOLUZIONI v4.pdf", "ADE", 10),
-        # ADE exam with 4 exercises and 3 sub-questions (7 total)
-        ("/home/laimk/git/examina-cloud/test-data/ADE-ESAMI/Compito - Prima Prova Intermedia 10-02-2020 - Soluzioni.pdf", "ADE", 5),
-        # AL exam with combined format (1a, 1b, 2a, 2b, etc.)
-        ("/home/laimk/git/examina-cloud/test-data/AL-ESAMI/20120612 - appello.pdf", "AL", 3),
-        # SO exam (replacing PC PDF which is image-only)
-        ("/home/laimk/git/examina-cloud/test-data/SO-ESAMI/SOfebbraio2020.pdf", "SO", 3),
-    ]
-
     passed = 0
     failed = 0
 
-    for pdf_path, course_code, expected_min in TEST_PDFS:
-        if Path(pdf_path).exists():
-            if test_pdf(pdf_path, course_code, expected_min):
+    for test_case in TEST_CASES:
+        if Path(test_case.path).exists():
+            if test_pdf(test_case):
                 passed += 1
             else:
                 failed += 1
         else:
-            print(f"\n⚠ Skipping (not found): {pdf_path}")
+            print(f"\n⚠ Skipping (not found): {test_case.path}")
 
     print(f"\n{'='*60}")
     print(f"RESULTS: {passed} passed, {failed} failed")
