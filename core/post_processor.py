@@ -45,28 +45,28 @@ Names:
 
 MERGE AGGRESSIVELY using these rules:
 
-1. MERGE VARIATIONS OF THE SAME PROCEDURE:
-   - If items are the SAME procedure applied to different input types/sizes/parameters, merge them
+1. MERGE SAME SKILL WITH DIFFERENT INPUTS:
+   - Same technique/method applied to different input types, sizes, or parameters
    - Pattern: "base_concept_X", "base_concept_Y", "base_concept_Z" → ONE "base_concept"
-   - The student learns ONE procedure, then applies it to different cases
+   - The student learns ONE skill, then applies it to different cases
 
-2. MERGE PARAMETERIZED VERSIONS:
-   - "X_formula" = "X_calculation" = "X_computation" (same thing, different suffixes)
-   - Abstract procedure = specific calculation methods
+2. MERGE SAME DEFINITION WITH DIFFERENT SCOPES:
+   - Same definition applied to 2-variable, 3-variable, 4-variable cases → ONE definition
+   - Same theorem with different dimensions/parameters → ONE theorem
 
-3. MERGE SYNONYMS AND ABBREVIATIONS:
+3. MERGE EQUIVALENT NAMES:
    - Abbreviation = full name
    - Alternate phrasings of the same concept
+   - Singular = plural ("X_condition" = "X_conditions")
+   - Different suffixes for same root ("X_formula" = "X_calculation")
 
-4. MERGE SINGULAR/PLURAL:
-   - "X_condition" = "X_conditions"
-   - "X_representation" = "X_representations"
+4. DO NOT MERGE TRULY DIFFERENT CONCEPTS:
+   - Fundamentally different techniques (different algorithms, not same algorithm with different inputs)
+   - Related but conceptually distinct topics
 
-5. DO NOT MERGE TRULY DIFFERENT CONCEPTS:
-   - Different types/variants that are taught separately (e.g., different algorithms)
-   - Related but distinct techniques
-
-KEY PRINCIPLE: Would a textbook have ONE chapter covering all these, or SEPARATE chapters? If one chapter → MERGE.
+KEY PRINCIPLE: Would a textbook have ONE section covering all these, or SEPARATE sections?
+- ONE section = merge (student learns one concept, applies to many cases)
+- SEPARATE sections = don't merge (fundamentally different concepts)
 
 Return JSON array of arrays. First item in each group is the CANONICAL (most abstract/general) name to keep.
 

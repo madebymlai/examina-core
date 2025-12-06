@@ -17,6 +17,17 @@ from core.proof_tutor import ProofTutor
 from core.metacognitive import MetacognitiveStrategies, DifficultyLevel, MasteryLevel
 
 
+def get_language_name(code: str) -> str:
+    """Get language instruction string for LLM prompts.
+
+    Uses explicit phrasing that LLMs understand without hardcoded mapping.
+    LLMs are trained on ISO 639-1 codes and understand them in context.
+    """
+    # LLMs understand "the language with code X" unambiguously
+    # This avoids confusing cases like "in it" being parsed as English "it"
+    return f"the language with ISO 639-1 code '{code}'"
+
+
 # Teaching strategy prompts based on learning_approach
 # Philosophy: "The Smartest Kid in the Library" - warm, calm, insider knowledge
 # LaTeX formatting: Use $...$ for inline math, $$...$$ for display/block math
@@ -887,7 +898,8 @@ class Tutor:
 
         # Build language instruction
         if self.language and self.language.lower() != "en":
-            language_instruction = f"IMPORTANT: You MUST respond entirely in {self.language}. Do not respond in English.\n\n"
+            lang_name = get_language_name(self.language)
+            language_instruction = f"IMPORTANT: You MUST respond entirely in {lang_name}. Do not respond in English.\n\n"
         else:
             language_instruction = "Respond in English.\n\n"
 
@@ -1012,7 +1024,8 @@ class Tutor:
 
         # Build language instruction - always include to ensure correct response language
         if self.language and self.language.lower() != "en":
-            language_instruction = f"IMPORTANT: You MUST respond entirely in {self.language}. Do not respond in English.\n\n"
+            lang_name = get_language_name(self.language)
+            language_instruction = f"IMPORTANT: You MUST respond entirely in {lang_name}. Do not respond in English.\n\n"
         else:
             language_instruction = "Respond in English.\n\n"
 
