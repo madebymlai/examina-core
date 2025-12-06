@@ -190,10 +190,13 @@ If no consistent exercise keyword pattern exists, return the first 3-5 words of 
 {{"mode": "explicit", "markers": ["first words of exercise 1", "first words of exercise 2", ...]}}"""
 
     try:
-        response = llm_manager.generate(
+        llm_response = llm_manager.generate(
             prompt.format(text=text_sample[:10000]),
             temperature=0.0,
         )
+
+        # Extract text from LLMResponse object
+        response = llm_response.text if hasattr(llm_response, 'text') else str(llm_response)
 
         # Parse JSON response
         # Handle potential markdown code blocks
