@@ -264,6 +264,31 @@ Terza domanda completa.
         expected_total=3,
     ),
 
+    # Nested numbering (1.1, 1.2, 2.1, etc.) - NOT affected by decimal fix
+    TestCase(
+        name="Nested numbering 1.1, 1.2 format",
+        text="""
+Problem 1
+Main question context.
+1.1 First sub-question
+1.2 Second sub-question
+1.3 Third sub-question
+
+Problem 2
+Another context.
+2.1 Sub one
+2.2 Sub two
+""",
+        pattern=MarkerPattern(
+            exercise_pattern=r"Problem\s+(\d+)",
+            sub_pattern=r"(\d+\.\d+)\s",
+            solution_pattern=None,
+        ),
+        expected_parents=2,
+        expected_subs=5,
+        expected_total=7,
+    ),
+
 ]
 
 # Special test case for restart detection - requires _build_hierarchy

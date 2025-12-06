@@ -359,6 +359,38 @@ def _fuzzy_find(text: str, search_term: str, start_from: int = 0) -> int:
     return -1
 
 
+def _fix_decimal_pattern(pattern_str: str) -> str:
+    r"""Add negative lookahead after dots in numbered patterns to avoid matching decimals.
+
+    Transforms patterns like:
+    - ``(\d+)\.\s*``  ->  ``(\d+)\.(?!\d)\s*``
+    - ``(\d+)\.``     ->  ``(\d+)\.(?!\d)``
+
+    Does NOT transform nested numbering patterns like:
+    - ``(\d+\.\d+)``  ->  unchanged (matches "1.1", "1.2", etc.)
+
+    This prevents matching "0.3" or "2.5" while still matching "1. " or "2. ".
+
+    Args:
+        pattern_str: Original regex pattern
+
+    Returns:
+        Fixed pattern with (?!\d) after vulnerable dots
+    """
+    if not pattern_str:
+        return pattern_str
+
+    import re
+    # Only fix \d+\. that is followed by \s, ), or end of pattern (not \d)
+    # This preserves nested numbering like \d+\.\d+ for "1.1" format
+    fixed = re.sub(
+        r'(\\d\+\)?\\\.)(\\s|\)|$)',
+        r'\1(?!\\d)\2',
+        pattern_str
+    )
+    return fixed
+
+
 def _find_all_markers(
     full_text: str,
     pattern: MarkerPattern,
@@ -460,8 +492,10 @@ def _find_all_markers(
     first_parent_pos = markers[0].start_position if markers else 0  # 0 = allow all subs
 
     if pattern.sub_pattern:
+        # Fix decimal matching issue: add (?!\d) after \d+\. patterns
+        sub_pattern_str = _fix_decimal_pattern(pattern.sub_pattern)
+
         # Wrap with (?:^|\n)\s* if not already anchored
-        sub_pattern_str = pattern.sub_pattern
         if not sub_pattern_str.startswith(('(?:^', '^', '\\A')):
             sub_pattern_str = rf'(?:^|\n)\s*{sub_pattern_str}'
 
