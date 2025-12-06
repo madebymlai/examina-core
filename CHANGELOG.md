@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Language-Agnostic Smart Exercise Splitter (2025-12-06)
+- LLM-provided regex patterns instead of hardcoded patterns
+- `MarkerPattern` dataclass with `exercise_pattern`, `sub_pattern`, `solution_pattern`
+- LLM detects document format dynamically (any language, any format)
+- Position-based filtering (markers must appear at start of line)
+- Hierarchy building with parent-child relationships
+- Restart detection to filter page headers/instructions
+- `_fix_decimal_pattern()` to prevent matching decimals in probability tables
+  - Only applies when dot followed by whitespace (preserves nested "1.1" formats)
+
+### Test Coverage
+- 10 synthetic pattern tests (Italian, Russian, Greek, combined, bullets, Roman, dots, parens, nested)
+- 4 real PDF tests (ADE, AL, SO courses)
+
 ### Fixed - LLM Exercise Splitter Position Finding
 - Added `end_page` field to `ExerciseBoundary` for multi-page exercise support
 - Implemented multi-page search strategy (LLM page → adjacent pages → all pages)
