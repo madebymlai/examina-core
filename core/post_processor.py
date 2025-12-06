@@ -38,33 +38,39 @@ def detect_synonyms(
     if len(unique_names) < 2:
         return []
 
-    prompt = f"""Given these knowledge item names from a course, identify groups of DUPLICATES (different names for the SAME concept).
+    prompt = f"""Given these knowledge item names from a course, identify groups that should be MERGED into ONE concept.
 
 Names:
 {chr(10).join(f"- {name}" for name in unique_names)}
 
-MERGE AGGRESSIVELY - group items if they refer to the same underlying concept:
+MERGE AGGRESSIVELY using these rules:
 
-1. MERGE if same base concept with different suffixes:
-   - "mips_calculation" = "mips_calculation_procedure" = "mips_calculation_method"
-   - "boolean_function" = "boolean_function_minimization" (if minimization is THE main procedure)
+1. MERGE VARIATIONS OF THE SAME PROCEDURE:
+   - If items are the SAME procedure applied to different input types/sizes/parameters, merge them
+   - Pattern: "base_concept_X", "base_concept_Y", "base_concept_Z" → ONE "base_concept"
+   - The student learns ONE procedure, then applies it to different cases
 
-2. MERGE abbreviations with full names:
-   - "DFS" = "depth_first_search"
-   - "CPI" = "cycles_per_instruction"
+2. MERGE PARAMETERIZED VERSIONS:
+   - "X_formula" = "X_calculation" = "X_computation" (same thing, different suffixes)
+   - Abstract procedure = specific calculation methods
 
-3. MERGE alternate phrasings:
-   - "flip_flop_output_waveform" = "flip_flop_waveform_analysis"
-   - "decimal_to_binary" = "binary_conversion_from_decimal"
+3. MERGE SYNONYMS AND ABBREVIATIONS:
+   - Abbreviation = full name
+   - Alternate phrasings of the same concept
 
-4. DO NOT MERGE if truly different concepts:
-   - "d_flip_flop" vs "d_latch" (different components)
-   - "boolean_function" vs "karnaugh_map" (different concepts, even if related)
+4. MERGE SINGULAR/PLURAL:
+   - "X_condition" = "X_conditions"
+   - "X_representation" = "X_representations"
 
-Return a JSON array of arrays, where each inner array contains names that should be merged.
-Only include groups with 2+ names. Names not in any group are unique concepts.
+5. DO NOT MERGE TRULY DIFFERENT CONCEPTS:
+   - Different types/variants that are taught separately (e.g., different algorithms)
+   - Related but distinct techniques
 
-Return ONLY the JSON array, no explanation. Return [] if no duplicates found."""
+KEY PRINCIPLE: Would a textbook have ONE chapter covering all these, or SEPARATE chapters? If one chapter → MERGE.
+
+Return JSON array of arrays. First item in each group is the CANONICAL (most abstract/general) name to keep.
+
+Return ONLY the JSON array. Return [] if no groups found."""
 
     try:
         response = llm.generate(
