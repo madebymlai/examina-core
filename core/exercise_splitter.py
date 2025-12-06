@@ -583,6 +583,185 @@ def _expand_exercises(
     return exercises
 
 
+def _extract_solutions(
+    exercises: List[Exercise],
+    full_text: str,
+    solution_ranges: List[Tuple[int, int]],
+    pattern: MarkerPattern,
+) -> List[Exercise]:
+    """Extract solution text and attach to exercises.
+
+    Handles:
+    - Format 2 (interleaved): Multiple solution sections, each follows an exercise
+    - Format 3 (appendix): Single solution section at end with all solutions
+
+    Args:
+        exercises: List of exercises (will be modified in place)
+        full_text: Complete document text
+        solution_ranges: List of (start, end) tuples for solution sections
+        pattern: Marker pattern with keyword and solution_keyword
+
+    Returns:
+        Exercises with solution field populated
+    """
+    if not solution_ranges or not pattern.solution_keyword:
+        return exercises
+
+    # Determine format based on number of solution sections vs exercises
+    # If multiple solution sections → Format 2 (interleaved)
+    # If single solution section → Format 3 (appendix)
+    is_appendix = len(solution_ranges) == 1
+
+    if is_appendix:
+        # Format 3: Single appendix with all solutions
+        _extract_appendix_solutions(exercises, full_text, solution_ranges[0], pattern)
+    else:
+        # Format 2: Interleaved solutions
+        _extract_interleaved_solutions(exercises, full_text, solution_ranges, pattern)
+
+    return exercises
+
+
+def _extract_interleaved_solutions(
+    exercises: List[Exercise],
+    full_text: str,
+    solution_ranges: List[Tuple[int, int]],
+    pattern: MarkerPattern,
+) -> None:
+    """Extract solutions for Format 2 (interleaved).
+
+    Each solution section follows an exercise and contains answers for that exercise.
+    """
+    # Build regex for sub-markers in solutions
+    if pattern.has_sub_markers and pattern.sub_format:
+        if pattern.sub_format == "lettered":
+            sub_regex = re.compile(r'(?:^|\n)\s*([a-z])\s*[)\.]', re.MULTILINE)
+        else:
+            sub_regex = re.compile(r'(?:^|\n)\s*(\d+)\s*[)\.](?!\d)', re.MULTILINE)
+    else:
+        sub_regex = None
+
+    # Group exercises by parent number
+    exercises_by_parent: Dict[str, List[Exercise]] = {}
+    for ex in exercises:
+        parent_num = ex.parent_exercise_number or ex.exercise_number
+        if parent_num:
+            if parent_num not in exercises_by_parent:
+                exercises_by_parent[parent_num] = []
+            exercises_by_parent[parent_num].append(ex)
+
+    # Match solution sections to exercises by position
+    # In Format 2, solution N follows exercise N
+    for i, (sol_start, sol_end) in enumerate(solution_ranges):
+        # Find which exercise this solution section corresponds to
+        # Look for the exercise that ends just before this solution
+        parent_num = str(i + 1)  # Assume solution sections are in order
+
+        if parent_num not in exercises_by_parent:
+            continue
+
+        solution_text = full_text[sol_start:sol_end].strip()
+
+        # If we have sub-markers, extract solutions for each sub-question
+        if sub_regex:
+            # Find all sub-markers in this solution section
+            sub_solutions: Dict[str, str] = {}
+            matches = list(sub_regex.finditer(solution_text))
+
+            for j, match in enumerate(matches):
+                sub_marker = match.group(1)
+                start = match.end()
+                # End at next sub-marker or end of section
+                end = matches[j + 1].start() if j + 1 < len(matches) else len(solution_text)
+                sub_solutions[sub_marker] = solution_text[start:end].strip()
+
+            # Match to exercises
+            for ex in exercises_by_parent[parent_num]:
+                if ex.sub_question_marker and ex.sub_question_marker in sub_solutions:
+                    ex.solution = sub_solutions[ex.sub_question_marker]
+                elif not ex.is_sub_question:
+                    # Parent exercise without sub-questions gets full solution
+                    ex.solution = solution_text
+        else:
+            # No sub-markers, full solution goes to parent exercise
+            for ex in exercises_by_parent[parent_num]:
+                if not ex.is_sub_question:
+                    ex.solution = solution_text
+
+
+def _extract_appendix_solutions(
+    exercises: List[Exercise],
+    full_text: str,
+    solution_range: Tuple[int, int],
+    pattern: MarkerPattern,
+) -> None:
+    """Extract solutions for Format 3 (appendix).
+
+    Single solution section at end contains all solutions, organized by exercise number.
+    """
+    sol_start, sol_end = solution_range
+    solution_text = full_text[sol_start:sol_end]
+
+    # Build regex to find exercise markers in solution section
+    keyword_escaped = re.escape(pattern.keyword)
+    exercise_regex = re.compile(
+        rf'(?:^|\n)\s*({keyword_escaped})\s+(\d+)',
+        re.IGNORECASE | re.MULTILINE
+    )
+
+    # Build regex for sub-markers
+    if pattern.has_sub_markers and pattern.sub_format:
+        if pattern.sub_format == "lettered":
+            sub_regex = re.compile(r'(?:^|\n)\s*([a-z])\s*[)\.]', re.MULTILINE)
+        else:
+            sub_regex = re.compile(r'(?:^|\n)\s*(\d+)\s*[)\.](?!\d)', re.MULTILINE)
+    else:
+        sub_regex = None
+
+    # Find all exercise markers in solution section
+    exercise_matches = list(exercise_regex.finditer(solution_text))
+
+    # Build solution map: {exercise_number: {sub_marker: solution_text}}
+    solution_map: Dict[str, Dict[str, str]] = {}
+
+    for i, match in enumerate(exercise_matches):
+        ex_num = match.group(2)
+        ex_start = match.end()
+        # End at next exercise marker or end of solution section
+        ex_end = exercise_matches[i + 1].start() if i + 1 < len(exercise_matches) else len(solution_text)
+
+        ex_solution_text = solution_text[ex_start:ex_end].strip()
+        solution_map[ex_num] = {}
+
+        if sub_regex:
+            # Find sub-markers within this exercise's solution
+            sub_matches = list(sub_regex.finditer(ex_solution_text))
+            for j, sub_match in enumerate(sub_matches):
+                sub_marker = sub_match.group(1)
+                sub_start = sub_match.end()
+                sub_end = sub_matches[j + 1].start() if j + 1 < len(sub_matches) else len(ex_solution_text)
+                solution_map[ex_num][sub_marker] = ex_solution_text[sub_start:sub_end].strip()
+
+            # If no sub-markers found, store full text
+            if not sub_matches:
+                solution_map[ex_num]["_full"] = ex_solution_text
+        else:
+            solution_map[ex_num]["_full"] = ex_solution_text
+
+    # Match solutions to exercises
+    for ex in exercises:
+        parent_num = ex.parent_exercise_number or ex.exercise_number
+        if not parent_num or parent_num not in solution_map:
+            continue
+
+        ex_solutions = solution_map[parent_num]
+
+        if ex.sub_question_marker and ex.sub_question_marker in ex_solutions:
+            ex.solution = ex_solutions[ex.sub_question_marker]
+        elif "_full" in ex_solutions and not ex.is_sub_question:
+            ex.solution = ex_solutions["_full"]
+
+
 def _generate_exercise_id(
     course_code: str,
     source_pdf: str,
@@ -765,6 +944,8 @@ class ExerciseSplitter:
 
         # Step 3: Find markers based on detection mode
         markers: List[Marker] = []
+        solution_ranges: List[Tuple[int, int]] = []
+        pattern: Optional[MarkerPattern] = None
 
         if detection.explicit_markers:
             # Mode 2: Explicit markers from LLM
@@ -802,7 +983,13 @@ class ExerciseSplitter:
             page_lookup,
         )
 
-        # Step 6: Enrich with image/latex data from pages
+        # Step 6: Extract solutions (if solution sections detected)
+        if solution_ranges and pattern:
+            exercises = _extract_solutions(exercises, full_text, solution_ranges, pattern)
+            solutions_found = sum(1 for ex in exercises if ex.solution)
+            logger.info(f"Extracted solutions for {solutions_found}/{len(exercises)} exercises")
+
+        # Step 7: Enrich with image/latex data from pages
         exercises = self._enrich_with_page_data(exercises, pdf_content)
 
         logger.info(f"Smart split produced {len(exercises)} exercises")
