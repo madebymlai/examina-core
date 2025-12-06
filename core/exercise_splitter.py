@@ -134,6 +134,7 @@ class MarkerPattern:
     keyword: str              # e.g., "Esercizio", "Exercise", "Problem"
     has_sub_markers: bool     # Whether document has sub-questions
     sub_format: Optional[str] # e.g., "numbered" (1., 2.) or "lettered" (a), b))
+    solution_keyword: Optional[str] = None  # e.g., "Soluzione", "Solution", "Answer"
 
 
 @dataclass
@@ -170,31 +171,23 @@ def _detect_pattern_with_llm(
     Returns:
         DetectionResult with either pattern or explicit markers, None if detection fails
     """
-    prompt = """Analyze this exam/exercise document and identify the exercises.
+    prompt = """Analyze this exam/exercise document and identify the structure.
 
 TEXT SAMPLE:
 ---
 {text}
 ---
 
-Two approaches:
+Identify:
+1. The KEYWORD used before exercise/problem numbers (appears multiple times with different numbers)
+2. Whether exercises have sub-questions (like a), b) or 1., 2. within each)
+3. If the document contains solutions, the KEYWORD used before solution sections
 
-APPROACH 1 - If exercises use a consistent keyword pattern (e.g., "Esercizio 1", "Exercise 2", "Problem 3"):
-Return the keyword and sub-question format.
+Return ONLY valid JSON:
+{{"mode": "pattern", "keyword": "detected keyword or null", "has_sub_markers": true/false, "sub_format": "lettered" or "numbered" or null, "solution_keyword": "detected solution keyword or null"}}
 
-APPROACH 2 - If no consistent keyword pattern exists:
-Return the first 3-5 words of each exercise as explicit markers.
-
-Return ONLY valid JSON in ONE of these formats:
-
-Format 1 (pattern-based):
-{{"mode": "pattern", "keyword": "the keyword", "has_sub_markers": true/false, "sub_format": "lettered" or "numbered" or null}}
-
-Format 2 (explicit markers):
-{{"mode": "explicit", "markers": ["First few words of exercise 1", "First few words of exercise 2", ...]}}
-
-Example Format 1: {{"mode": "pattern", "keyword": "Esercizio", "has_sub_markers": true, "sub_format": "lettered"}}
-Example Format 2: {{"mode": "explicit", "markers": ["Consider the following", "Given a graph G", "Prove that"]}}"""
+If no consistent exercise keyword pattern exists, return the first 3-5 words of each exercise:
+{{"mode": "explicit", "markers": ["first words of exercise 1", "first words of exercise 2", ...]}}"""
 
     try:
         response = llm_manager.generate(
@@ -231,6 +224,7 @@ Example Format 2: {{"mode": "explicit", "markers": ["Consider the following", "G
                 keyword=keyword,
                 has_sub_markers=data.get("has_sub_markers", False),
                 sub_format=data.get("sub_format"),
+                solution_keyword=data.get("solution_keyword"),
             )
         )
 
@@ -325,17 +319,23 @@ def _fuzzy_find(text: str, search_term: str, start_from: int = 0) -> int:
 def _find_all_markers(
     full_text: str,
     pattern: MarkerPattern,
-) -> List[Marker]:
+) -> Tuple[List[Marker], List[Tuple[int, int]]]:
     """Find all exercise markers in document using detected pattern.
+
+    Handles three document formats:
+    1. Embedded solutions (no keyword): All text belongs to exercises
+    2. Separate solution sections: Filters markers after solution keyword
+    3. Appendix solutions: Filters all markers in solution section at end
 
     Args:
         full_text: Complete document text
         pattern: Detected marker pattern from LLM
 
     Returns:
-        List of Marker objects sorted by position
+        Tuple of (List of Marker objects sorted by position, List of solution ranges)
     """
     markers: List[Marker] = []
+    solution_ranges: List[Tuple[int, int]] = []  # (start, end) of solution sections
 
     # Build regex for parent markers: keyword + number
     keyword_escaped = re.escape(pattern.keyword)
@@ -344,13 +344,60 @@ def _find_all_markers(
         re.IGNORECASE | re.MULTILINE
     )
 
-    # Find all parent markers
+    # Find all parent (exercise) markers - collect raw matches first
+    raw_parent_markers: List[Tuple[int, str, str, int]] = []  # (start, marker_text, number, question_start)
     for match in parent_regex.finditer(full_text):
-        marker_text = match.group(0).strip()
-        number = match.group(2)
-        start_pos = match.start()
-        # Question starts after the marker
-        question_start = match.end()
+        raw_parent_markers.append((
+            match.start(),
+            match.group(0).strip(),
+            match.group(2),
+            match.end(),
+        ))
+
+    # Find solution section positions (if solution keyword detected)
+    # Solution sections extend from solution keyword to end of text
+    # (Format 3: appendix where all solutions are at the end)
+    if pattern.solution_keyword:
+        sol_escaped = re.escape(pattern.solution_keyword)
+        sol_regex = re.compile(
+            rf'(?:^|\n)\s*({sol_escaped})',
+            re.IGNORECASE | re.MULTILINE
+        )
+
+        for match in sol_regex.finditer(full_text):
+            sol_start = match.start()
+            sol_match_end = match.end()  # End of current match (to search for next)
+
+            # Check if there are MORE solution keywords after this one
+            next_sol_match = sol_regex.search(full_text, sol_match_end)
+            has_more_solutions = next_sol_match is not None
+
+            if has_more_solutions:
+                # Format 2 (interleaved): Multiple solution sections
+                # Solution ends at the next exercise marker
+                sol_end = len(full_text)
+                for start_pos, _, _, _ in raw_parent_markers:
+                    if start_pos > sol_start:
+                        sol_end = start_pos
+                        break
+            else:
+                # Format 3 (appendix) OR last solution in Format 2
+                # Solution extends to end of text
+                sol_end = len(full_text)
+
+            solution_ranges.append((sol_start, sol_end))
+
+    def _is_in_solution_section(pos: int) -> bool:
+        """Check if position falls within any solution section."""
+        for start, end in solution_ranges:
+            if start <= pos < end:
+                return True
+        return False
+
+    # Filter parent markers - skip those in solution sections
+    for start_pos, marker_text, number, question_start in raw_parent_markers:
+        if _is_in_solution_section(start_pos):
+            continue
 
         markers.append(Marker(
             marker_type=MarkerType.PARENT,
@@ -363,21 +410,25 @@ def _find_all_markers(
     # Find sub-markers if present
     if pattern.has_sub_markers and pattern.sub_format:
         if pattern.sub_format == "lettered":
-            # a), b), c) or a., b., c.
             sub_regex = re.compile(
                 r'(?:^|\n)\s*([a-z])\s*[)\.]',
                 re.MULTILINE
             )
-        else:  # numbered: 1., 2., 3. or 1), 2), 3)
+        else:  # numbered
             sub_regex = re.compile(
-                r'(?:^|\n)\s*(\d+)\s*[)\.](?!\d)',  # (?!\d) to avoid matching "1.5"
+                r'(?:^|\n)\s*(\d+)\s*[)\.](?!\d)',
                 re.MULTILINE
             )
 
         for match in sub_regex.finditer(full_text):
+            start_pos = match.start()
+
+            # Skip sub-markers in solution sections
+            if _is_in_solution_section(start_pos):
+                continue
+
             marker_text = match.group(0).strip()
             number = match.group(1)
-            start_pos = match.start()
             question_start = match.end()
 
             markers.append(Marker(
@@ -391,7 +442,7 @@ def _find_all_markers(
     # Sort by position
     markers.sort(key=lambda m: m.start_position)
 
-    return markers
+    return markers, solution_ranges
 
 
 def _build_hierarchy(markers: List[Marker], full_text: str) -> List[ExerciseNode]:
@@ -727,8 +778,11 @@ class ExerciseSplitter:
             logger.info(
                 f"Pattern detected: keyword='{pattern.keyword}', "
                 f"has_sub={pattern.has_sub_markers}, sub_format={pattern.sub_format}"
+                + (f", solution_keyword='{pattern.solution_keyword}'" if pattern.solution_keyword else "")
             )
-            markers = _find_all_markers(full_text, pattern)
+            markers, solution_ranges = _find_all_markers(full_text, pattern)
+            if solution_ranges:
+                logger.info(f"Detected {len(solution_ranges)} solution sections (filtering markers in those)")
 
         if not markers:
             logger.warning("Pattern detected but no markers found, falling back")
