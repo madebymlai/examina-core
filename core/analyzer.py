@@ -616,9 +616,14 @@ SELECTION CRITERIA (pick the BEST, not just any):
 - Pick the skill that, if mastered, would guarantee solving this exercise
 - Pick the most SPECIFIC skill (not generic like "problem solving")
 - Pick the skill the PROFESSOR wants to test (exam perspective)
-- If exercise asks to PERFORM → the procedure/algorithm
-- If exercise asks to EXPLAIN → the definition/concept
-- If BOTH → pick whichever is more challenging to master
+
+KNOWLEDGE TYPE SELECTION:
+- PERFORM/CALCULATE/DESIGN/BUILD → procedure or algorithm
+- EXPLAIN/DEFINE/DESCRIBE → definition or key_concept
+- PROVE/DERIVE/DEMONSTRATE → proof or derivation
+- STATE/RECALL (a theorem/law) → theorem or formula
+- MEMORIZE/KNOW (a fact) → fact
+- If BOTH action + explanation → pick the more challenging one
 
 1. For PROCEDURES (step-by-step methods):
    - knowledge_type: "procedure" or "algorithm"
