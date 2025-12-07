@@ -273,18 +273,31 @@ class ExerciseAnalyzer:
         # Format: [{"concept_id": str, "parent_concept_name": str|None, "variation_parameter": str|None}, ...]
         prerequisite_concepts = data.get("prerequisite_concepts")
 
-        # Parse unified knowledge_items (new unified model)
+        # Parse unified knowledge_item (ONE per exercise)
+        # Also handle legacy knowledge_items array (take first item only)
         knowledge_items = []
-        if "knowledge_items" in data and data["knowledge_items"]:
-            for item_data in data["knowledge_items"]:
-                knowledge_items.append(KnowledgeItemInfo(
-                    name=item_data.get("name", "unknown"),
-                    knowledge_type=item_data.get("knowledge_type", "key_concept"),
-                    learning_approach=item_data.get("learning_approach"),
-                    content=item_data.get("content"),
-                    parent_name=item_data.get("parent_name"),
-                    variation_parameter=item_data.get("variation_parameter"),
-                ))
+        if "knowledge_item" in data and data["knowledge_item"]:
+            # New format: single object
+            item_data = data["knowledge_item"]
+            knowledge_items.append(KnowledgeItemInfo(
+                name=item_data.get("name", "unknown"),
+                knowledge_type=item_data.get("knowledge_type", "key_concept"),
+                learning_approach=item_data.get("learning_approach"),
+                content=item_data.get("content"),
+                parent_name=item_data.get("parent_name"),
+                variation_parameter=item_data.get("variation_parameter"),
+            ))
+        elif "knowledge_items" in data and data["knowledge_items"]:
+            # Legacy format: take first item only
+            item_data = data["knowledge_items"][0]
+            knowledge_items.append(KnowledgeItemInfo(
+                name=item_data.get("name", "unknown"),
+                knowledge_type=item_data.get("knowledge_type", "key_concept"),
+                learning_approach=item_data.get("learning_approach"),
+                content=item_data.get("content"),
+                parent_name=item_data.get("parent_name"),
+                variation_parameter=item_data.get("variation_parameter"),
+            ))
 
         # Extract fields
         return AnalysisResult(
@@ -392,16 +405,14 @@ Respond in JSON format with:
       "variation_parameter": "what makes this specific (e.g., 'base=2') or null"
     }}
   ],
-  "knowledge_items": [  // UNIFIED KNOWLEDGE MODEL: All knowledge extracted from this exercise
-    {{
-      "name": "snake_case_name",  // Normalized identifier
-      "knowledge_type": "procedure|definition|theorem|proof|fact|formula|algorithm|explanation|key_concept|derivation|principle",
-      "learning_approach": "procedural|conceptual|factual|analytical",  // HOW to best teach this
-      "content": {{}},  // Flexible JSON - for procedures: {{"steps": [...]}}, for definitions: {{"definition": "..."}}, etc.
-      "parent_name": "abstract parent name or null",  // For variations: the general concept this is a variation of
-      "variation_parameter": "what makes this specific (e.g., '2x2 matrix') or null"
-    }}
-  ]
+  "knowledge_item": {{  // UNIFIED KNOWLEDGE MODEL: ONE concept per exercise
+    "name": "snake_case_name",  // Normalized identifier for the PRIMARY skill tested
+    "knowledge_type": "procedure|definition|theorem|proof|fact|formula|algorithm|explanation|key_concept|derivation|principle",
+    "learning_approach": "procedural|conceptual|factual|analytical",  // HOW to best teach this
+    "content": {{}},  // Flexible JSON - for procedures: {{"steps": [...]}}, for definitions: {{"definition": "..."}}, etc.
+    "parent_name": "abstract parent name or null",  // For variations: the general concept this is a variation of
+    "variation_parameter": "what makes this specific (e.g., '2x2 matrix') or null"
+  }}
 }}
 
 IMPORTANT ANALYSIS GUIDELINES:
@@ -592,24 +603,19 @@ IMPORTANT:
 - For hybrid exercises, fill BOTH procedures array AND theory fields
 - If exercise asks definition AND computation, mark as hybrid with both
 
-UNIFIED KNOWLEDGE MODEL (knowledge_items array):
-Extract ONLY knowledge units that are ACTUALLY TESTED by this exercise:
+UNIFIED KNOWLEDGE MODEL (ONE knowledge_item per exercise):
+Extract the SINGLE PRIMARY skill that this exercise tests:
 
-CRITICAL - AVOID FALSE EXTRACTION:
-- Extract ONLY skills the exercise DIRECTLY tests, NOT concepts merely mentioned
-- Ask: "If a student fails this exercise, what specific skill are they missing?"
-- That skill is what you extract - nothing else!
+CRITICAL - ONE CONCEPT RULE:
+- Each exercise tests ONE primary skill - identify and extract ONLY that
+- Ask: "What is the MAIN thing a student must know to solve this?"
+- That single skill is your knowledge_item - nothing else!
 
 EXTRACTION RULES (semantic, not keyword-based):
 - If exercise asks to PERFORM an action → extract the action skill (procedure)
 - If exercise asks to EXPLAIN/DEFINE something → extract the concept (definition)
-- If exercise asks BOTH → extract both
-- Do NOT extract definitions for concepts that are only used as context for a procedure
-
-QUANTITY GUIDELINE:
-- Most exercises test 1-2 skills, rarely 3
-- If you extract 4+ items from one exercise, you're probably over-extracting
-- Focus on the PRIMARY skill being tested
+- If exercise asks BOTH → extract the DOMINANT one (usually the procedure)
+- Do NOT extract secondary concepts that are merely context
 
 1. For PROCEDURES (step-by-step methods):
    - knowledge_type: "procedure" or "algorithm"
@@ -642,7 +648,7 @@ BACKWARD COMPATIBILITY:
 - Even if exercise has only ONE procedure, still return it in "procedures" array
 - Extract actual solving steps if you can identify them
 - The first procedure in the array is considered the PRIMARY procedure
-- ALSO populate knowledge_items with the same data in unified format
+- ALSO populate knowledge_item with the PRIMARY skill (single object, not array)
 
 Respond ONLY with valid JSON, no other text.
 """
