@@ -137,6 +137,7 @@ class MarkerPattern:
     exercise_pattern: str                   # Regex for exercise markers (e.g., "Esercizio\\s+(\\d+)")
     sub_pattern: Optional[str] = None       # Regex for sub-markers (e.g., "([a-z])\\s*[).]")
     solution_pattern: Optional[str] = None  # Keyword or regex for solutions (e.g., "Soluzione")
+    sub_triggers: Optional[List[str]] = None  # Phrases that precede numbered sub-questions
 
 
 @dataclass
@@ -208,8 +209,14 @@ Identify the exact patterns used and return Python regex patterns:
 3. SOLUTION_PATTERN - Keyword or regex for solution sections (if any).
    Examples: "Soluzione", "Solution", "Answer", "Ответ"
 
+4. SUB_TRIGGERS - Array of regex patterns for phrases that PRECEDE sub-questions.
+   ONLY needed when sub_pattern uses the SAME marker type as exercise_pattern (both numbers, or both letters).
+   These phrases indicate "what follows are sub-questions, not new exercises".
+   Examples: "Si richiede di\\s*:", "Answer the following\\s*:"
+   Return null if sub_pattern uses DIFFERENT marker type than exercise_pattern.
+
 Return ONLY valid JSON:
-{{"mode": "pattern", "exercise_pattern": "regex string", "sub_pattern": "regex string or null", "solution_pattern": "keyword or null"}}
+{{"mode": "pattern", "exercise_pattern": "regex string", "sub_pattern": "regex string or null", "solution_pattern": "keyword or null", "sub_triggers": ["array of regex strings"] or null}}
 
 If NO consistent pattern exists, return explicit markers with question boundaries:
 {{"mode": "explicit", "exercises": [
@@ -297,11 +304,27 @@ IMPORTANT for end_marker:
                 logger.warning(f"Invalid sub_pattern from LLM: {sub_pattern} - {e}")
                 sub_pattern = None  # Continue without sub-pattern
 
+        # Parse sub_triggers - validate each regex
+        sub_triggers = data.get("sub_triggers")
+        if sub_triggers and isinstance(sub_triggers, list):
+            valid_triggers = []
+            for trigger in sub_triggers:
+                if trigger:
+                    try:
+                        re.compile(trigger)
+                        valid_triggers.append(trigger)
+                    except re.error as e:
+                        logger.warning(f"Invalid sub_trigger from LLM: {trigger} - {e}")
+            sub_triggers = valid_triggers if valid_triggers else None
+        else:
+            sub_triggers = None
+
         return DetectionResult(
             pattern=MarkerPattern(
                 exercise_pattern=exercise_pattern,
                 sub_pattern=sub_pattern,
                 solution_pattern=data.get("solution_pattern"),
+                sub_triggers=sub_triggers,
             )
         )
 
@@ -661,6 +684,18 @@ def _find_all_markers(
             logger.warning(f"Failed to compile sub_pattern: {pattern.sub_pattern} - {e}")
             sub_regex = None
 
+        # Build trigger regexes if provided by LLM
+        # LLM returns sub_triggers when sub_pattern could conflict with exercise_pattern
+        # (e.g., both use numbers, or both use letters)
+        # Trust LLM's judgment - if triggers provided, use them
+        trigger_regexes = []
+        if pattern.sub_triggers:
+            for trigger in pattern.sub_triggers:
+                try:
+                    trigger_regexes.append(re.compile(trigger, re.IGNORECASE))
+                except re.error:
+                    pass
+
         if sub_regex:
             for match in sub_regex.finditer(full_text):
                 start_pos = match.start()
@@ -672,6 +707,21 @@ def _find_all_markers(
                 # Skip sub-markers in solution sections
                 if _is_in_solution_section(start_pos):
                     continue
+
+                # If triggers are required (for numbered sub-patterns), check for trigger phrase
+                if trigger_regexes:
+                    # Find the parent marker position that precedes this sub-marker
+                    parent_start = first_parent_pos
+                    for m in markers:
+                        if m.marker_type == MarkerType.PARENT and m.start_position < start_pos:
+                            parent_start = m.start_position
+
+                    # Look for trigger in text between parent and sub-marker
+                    text_before_sub = full_text[parent_start:start_pos]
+                    trigger_found = any(tr.search(text_before_sub) for tr in trigger_regexes)
+                    if not trigger_found:
+                        # No trigger found - this numbered marker is likely a main exercise, skip
+                        continue
 
                 marker_text = match.group(0).strip()
 
