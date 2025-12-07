@@ -193,18 +193,10 @@ TEXT SAMPLE:
 Identify the exact patterns used and return Python regex patterns:
 
 1. EXERCISE_PATTERN - Regex matching exercise markers. Must have a capture group for the exercise number.
-   Examples:
-   - "Esercizio\\s+(\\d+)" matches "Esercizio 1", "Esercizio 2"
-   - "Problem\\s+(\\d+)" matches "Problem 1", "Problem 2"
-   - "(\\d+)\\." matches "1.", "2." (if no keyword, just numbers)
+   Format: "keyword\\s+(\\d+)" or "(\\d+)\\." if no keyword.
 
 2. SUB_PATTERN - Regex matching sub-question markers (if any). Should have capture group(s).
-   Examples:
-   - "([a-z])\\s*[).]" matches "a)", "b.", "c)" (Latin letters)
-   - "([а-я])\\s*[).]" matches "а)", "б)" (Cyrillic letters)
-   - "(\\d+)\\s*[).]" matches "1)", "2." (numbered sub-questions)
-   - "(\\d+)([a-z])\\s*[).]" matches "1a)", "2b)" (combined: 2 groups = parent + sub)
-   - "[-•*]\\s+" matches "- ", "• " (bullets, no capture group needed)
+   Format: "([a-z])\\s*[).]" for letters, "(\\d+)\\s*[).]" for numbers, "[-•*]\\s+" for bullets.
 
 3. SOLUTION_PATTERN - Keyword or regex for solution sections (if any).
 
