@@ -150,10 +150,19 @@ class ExerciseNode:
 
 
 @dataclass
+class ExplicitExercise:
+    """Explicit exercise markers from LLM detection."""
+    number: str
+    start_marker: str  # First ~50 chars of exercise
+    end_marker: Optional[str] = None  # Last ~50 chars of QUESTION (before junk)
+
+
+@dataclass
 class DetectionResult:
     """Result from LLM exercise detection."""
     pattern: Optional[MarkerPattern] = None  # Pattern-based detection
-    explicit_markers: Optional[List[str]] = None  # Explicit marker texts
+    explicit_markers: Optional[List[str]] = None  # Legacy: simple marker texts
+    explicit_exercises: Optional[List[ExplicitExercise]] = None  # New: with end markers
 
 
 def _detect_pattern_with_llm(
@@ -202,12 +211,24 @@ Identify the exact patterns used and return Python regex patterns:
 Return ONLY valid JSON:
 {{"mode": "pattern", "exercise_pattern": "regex string", "sub_pattern": "regex string or null", "solution_pattern": "keyword or null"}}
 
-If NO consistent pattern exists, return first 3-5 words of each exercise:
-{{"mode": "explicit", "markers": ["first words of ex 1", "first words of ex 2", ...]}}"""
+If NO consistent pattern exists, return explicit markers with question boundaries:
+{{"mode": "explicit", "exercises": [
+  {{"number": "1", "start_marker": "first ~50 chars of exercise 1", "end_marker": "last ~50 chars of QUESTION only"}},
+  {{"number": "2", "start_marker": "first ~50 chars of exercise 2", "end_marker": "last ~50 chars of QUESTION only"}}
+]}}
+
+IMPORTANT for end_marker:
+- End at the actual QUESTION text, BEFORE any non-question content like:
+  - Form fields (blank lines with underscores or dots for student to fill)
+  - Repeated exam instructions or rules
+  - Solutions or answers
+  - Page headers/footers
+- The end_marker should be the last sentence of what the student needs to solve.
+- Use your understanding of the document structure to identify where the question ends."""
 
     try:
         llm_response = llm_manager.generate(
-            prompt.format(text=text_sample[:10000]),
+            prompt.format(text=text_sample[:30000]),
             temperature=0.0,
         )
 
@@ -238,6 +259,19 @@ If NO consistent pattern exists, return first 3-5 words of each exercise:
         mode = data.get("mode", "pattern")
 
         if mode == "explicit":
+            # New format with exercises array (includes end_marker)
+            exercises = data.get("exercises", [])
+            if exercises:
+                explicit_exercises = []
+                for ex in exercises:
+                    explicit_exercises.append(ExplicitExercise(
+                        number=str(ex.get("number", "")),
+                        start_marker=ex.get("start_marker", ""),
+                        end_marker=ex.get("end_marker"),
+                    ))
+                return DetectionResult(explicit_exercises=explicit_exercises)
+
+            # Legacy format with simple markers array (backward compat)
             markers = data.get("markers", [])
             if markers:
                 return DetectionResult(explicit_markers=markers)
@@ -279,11 +313,133 @@ If NO consistent pattern exists, return first 3-5 words of each exercise:
         return None
 
 
+@dataclass
+class ExerciseBoundary:
+    """Exercise boundaries found in document."""
+    number: str
+    start_pos: int
+    end_pos: Optional[int]  # None if end_marker not found
+
+
+def _find_explicit_exercises(
+    full_text: str,
+    explicit_exercises: List[ExplicitExercise],
+) -> List[ExerciseBoundary]:
+    """Find exercise boundaries using explicit markers with end positions.
+
+    Args:
+        full_text: Complete document text
+        explicit_exercises: List of ExplicitExercise with start/end markers
+
+    Returns:
+        List of ExerciseBoundary with start and end positions
+    """
+    boundaries: List[ExerciseBoundary] = []
+
+    for ex in explicit_exercises:
+        # Find start position
+        start_pos = _fuzzy_find(full_text, ex.start_marker)
+        if start_pos < 0:
+            logger.warning(f"Start marker not found for exercise {ex.number}: '{ex.start_marker}'")
+            continue
+
+        # Find end position (if end_marker provided)
+        end_pos = None
+        if ex.end_marker:
+            # Search for end_marker after start_pos
+            end_pos = _fuzzy_find(full_text, ex.end_marker, start_from=start_pos)
+            if end_pos >= 0:
+                # Include the end_marker text in the exercise
+                end_pos += len(ex.end_marker)
+            else:
+                logger.warning(f"End marker not found for exercise {ex.number}: '{ex.end_marker}'")
+
+        boundaries.append(ExerciseBoundary(
+            number=ex.number,
+            start_pos=start_pos,
+            end_pos=end_pos,
+        ))
+
+    # Sort by start position
+    boundaries.sort(key=lambda b: b.start_pos)
+
+    return boundaries
+
+
+def _create_exercises_from_boundaries(
+    boundaries: List[ExerciseBoundary],
+    full_text: str,
+    pdf_content: "PDFContent",
+    course_code: str,
+    page_lookup: Dict[int, int],
+) -> List[Exercise]:
+    """Create Exercise objects from explicit boundaries.
+
+    Args:
+        boundaries: List of exercise boundaries with start/end positions
+        full_text: Complete document text
+        pdf_content: PDF content for metadata
+        course_code: Course code for ID generation
+        page_lookup: Mapping of char positions to page numbers
+
+    Returns:
+        List of Exercise objects
+    """
+    exercises: List[Exercise] = []
+
+    def get_page_number(char_pos: int) -> int:
+        """Find page number for a character position."""
+        page = 1
+        for pos, pg in sorted(page_lookup.items()):
+            if pos <= char_pos:
+                page = pg
+            else:
+                break
+        return page
+
+    for i, boundary in enumerate(boundaries):
+        # Determine end position
+        if boundary.end_pos:
+            # Use explicit end position
+            end_pos = boundary.end_pos
+        elif i + 1 < len(boundaries):
+            # Fall back to next exercise start
+            end_pos = boundaries[i + 1].start_pos
+        else:
+            # Last exercise - go to end of document
+            end_pos = len(full_text)
+
+        # Extract text
+        text = full_text[boundary.start_pos:end_pos].strip()
+
+        # Generate exercise ID
+        page_num = get_page_number(boundary.start_pos)
+        exercise_id = _generate_exercise_id(
+            course_code, pdf_content.file_path.name, page_num, i + 1
+        )
+
+        exercises.append(Exercise(
+            id=exercise_id,
+            text=text,
+            page_number=page_num,
+            exercise_number=boundary.number,
+            has_images=False,
+            image_data=[],
+            has_latex=False,
+            latex_content=None,
+            source_pdf=pdf_content.file_path.name,
+        ))
+
+    return exercises
+
+
 def _find_explicit_markers(
     full_text: str,
     marker_texts: List[str],
 ) -> List[Marker]:
     """Find markers in document using explicit marker texts from LLM.
+
+    Legacy function for backward compatibility with simple marker format.
 
     Args:
         full_text: Complete document text
@@ -1052,7 +1208,7 @@ class ExerciseSplitter:
 
         # Step 2: Detect pattern/markers with LLM
         logger.info("Detecting exercise pattern with LLM...")
-        detection = _detect_pattern_with_llm(full_text[:10000], llm_manager)
+        detection = _detect_pattern_with_llm(full_text[:30000], llm_manager)
 
         if not detection:
             # No detection - try regex fallback, then page-based
@@ -1080,8 +1236,22 @@ class ExerciseSplitter:
         solution_ranges: List[Tuple[int, int]] = []
         pattern: Optional[MarkerPattern] = None
 
-        if detection.explicit_markers:
-            # Mode 2: Explicit markers from LLM
+        if detection.explicit_exercises:
+            # Mode 2a: Explicit exercises with end markers (new format)
+            logger.info(
+                f"Using explicit exercises: {len(detection.explicit_exercises)} exercises with end markers"
+            )
+            boundaries = _find_explicit_exercises(full_text, detection.explicit_exercises)
+            exercises = _create_exercises_from_boundaries(
+                boundaries, full_text, pdf_content, course_code, page_lookup
+            )
+            # Enrich with page data and return
+            exercises = self._enrich_with_page_data(exercises, pdf_content)
+            logger.info(f"Explicit mode produced {len(exercises)} exercises")
+            return exercises
+
+        elif detection.explicit_markers:
+            # Mode 2b: Legacy explicit markers (backward compat)
             logger.info(
                 f"Using explicit markers: {len(detection.explicit_markers)} markers"
             )
