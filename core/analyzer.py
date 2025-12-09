@@ -4,6 +4,7 @@ Extracts knowledge items from exercises for spaced repetition learning.
 """
 
 import json
+import logging
 import re
 import time
 import asyncio
@@ -15,6 +16,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from models.llm_manager import LLMManager, LLMResponse
 from storage.database import Database
 from config import Config
+
+logger = logging.getLogger(__name__)
 
 # Knowledge item types - what kind of knowledge is being tested
 KNOWLEDGE_TYPES = [
@@ -296,10 +299,11 @@ KNOWLEDGE TYPE:
 - STATE/RECALL (a theorem/law) → theorem or formula
 - MEMORIZE/KNOW (a fact) → fact
 
-NAMING (be specific!):
-- Use the SPECIFIC entity from exercise text
-- Pattern: action + entity (e.g., "fsm_design", "binary_to_decimal_conversion")
-- NOT generic: "problem_solving", "exercise_1"
+NAMING:
+- Name the CONCEPT being tested, not the TASK being performed
+- Ask: "What would a textbook chapter about this be titled?"
+- The name should make sense outside this exercise context
+- If multiple concepts are tested, pick the primary one
 
 VARIATION:
 - If specific case of general skill: set parent_name and variation_parameter

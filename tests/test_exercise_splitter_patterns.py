@@ -471,14 +471,74 @@ Context for exercise 2.
         return False
 
 
+def test_multichar_roman_numerals():
+    """Test that multi-character roman numerals (ii, iii, iv) don't trigger false restart.
+
+    This tests the fix for the bug where roman numerals like 'ii', 'iii' would
+    cause sub_value=0 (because len > 1) and trigger false restart detection.
+    """
+    print("\n" + "=" * 60)
+    print("MULTI-CHARACTER ROMAN NUMERAL TEST")
+    print("=" * 60)
+
+    # Test case: Exercise with roman numeral sub-parts (i, ii, iii, iv, v)
+    text = """
+Problem 1
+Answer these questions:
+(i) Define linear independence
+(ii) Define spanning set
+(iii) Give the definition of dimension
+(iv) State the Rouche-Capelli theorem
+(v) Explain eigenvalue multiplicity
+
+Problem 2
+Prove:
+(i) First proof step
+(ii) Second proof step
+"""
+    pattern = MarkerPattern(
+        exercise_pattern=r"Problem\s+(\d+)",
+        sub_patterns=[r"\(([ivx]+)\)"],
+        solution_pattern=None,
+    )
+
+    markers, _ = _find_all_markers(text, pattern)
+    hierarchy = _build_hierarchy(markers, text)
+
+    print(f"\nMulti-char roman numeral test:")
+    print(f"  Root exercises: {len(hierarchy)}")
+
+    total_children = 0
+    for root in hierarchy:
+        print(f"  - Problem {root.marker.number}: {len(root.children)} children")
+        for child in root.children:
+            print(f"    - ({child.marker.number})")
+        total_children += len(root.children)
+
+    # Should have: Problem 1 with 5 subs (i, ii, iii, iv, v), Problem 2 with 2 subs (i, ii)
+    expected_parents = 2
+    expected_children = 7  # 5 + 2
+
+    if len(hierarchy) == expected_parents and total_children == expected_children:
+        print(f"  ✓ PASS: {len(hierarchy)} parents, {total_children} children (all roman numerals preserved)")
+        return True
+    else:
+        print(f"  ✗ FAIL:")
+        print(f"    Parents: got {len(hierarchy)}, expected {expected_parents}")
+        print(f"    Children: got {total_children}, expected {expected_children}")
+        print(f"    (Bug: multi-char roman numerals like 'ii', 'iii' may have triggered false restart)")
+        return False
+
+
 if __name__ == "__main__":
     import sys
 
     pattern_ok = test_pattern_matching()
     restart_ok = test_restart_detection()
     hierarchy_ok = test_hierarchy_building()
+    roman_ok = test_multichar_roman_numerals()
 
-    all_ok = pattern_ok and restart_ok and hierarchy_ok
+    all_ok = pattern_ok and restart_ok and hierarchy_ok and roman_ok
     if all_ok:
         print("\n✓ All tests passed!")
         sys.exit(0)

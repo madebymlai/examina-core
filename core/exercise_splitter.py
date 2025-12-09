@@ -44,6 +44,32 @@ def _strip_inline_flags(pattern: str) -> Tuple[str, int]:
     return clean_pattern, flags
 
 
+def _is_roman_numeral(s: str) -> bool:
+    """Check if string is a valid roman numeral (i, ii, iii, iv, v, etc.)."""
+    if not s:
+        return False
+    return bool(re.match(r'^[ivxlcdm]+$', s.lower()))
+
+
+def _roman_to_int(s: str) -> int:
+    """Convert roman numeral string to integer.
+
+    Examples: i=1, ii=2, iii=3, iv=4, v=5, vi=6, ix=9, x=10
+    """
+    roman_map = {'i': 1, 'v': 5, 'x': 10, 'l': 50, 'c': 100, 'd': 500, 'm': 1000}
+    s = s.lower()
+    result = 0
+    prev = 0
+    for c in reversed(s):
+        curr = roman_map.get(c, 0)
+        if curr < prev:
+            result -= curr
+        else:
+            result += curr
+        prev = curr
+    return result
+
+
 @dataclass
 class Exercise:
     """Represents a single exercise extracted from a PDF."""
@@ -859,20 +885,27 @@ def _build_hierarchy(markers: List[Marker], full_text: str) -> List[ExerciseNode
                     continue
 
                 # Detect restart: if sequence value drops (4→1 or d→a)
-                sub_value = 0
+                # Handle multi-char markers (roman numerals, multi-digit numbers)
+                sub_value = None
                 try:
                     sub_value = int(marker.number)
                 except ValueError:
-                    # Lettered marker - convert to ordinal value
-                    if len(marker.number) == 1 and marker.number.isalpha():
-                        sub_value = ord(marker.number.lower())
+                    if marker.number.isalpha():
+                        if _is_roman_numeral(marker.number):
+                            # Roman numerals: i=1, ii=2, iii=3, iv=4, etc.
+                            sub_value = _roman_to_int(marker.number)
+                        else:
+                            # Regular letters: sum ordinals so "aa" > "a"
+                            sub_value = sum(ord(c.lower()) for c in marker.number)
 
                 # Restart detected if value drops significantly (not sequential)
-                if highest_sub_value > 0 and sub_value < highest_sub_value:
-                    # Sequence restarted - skip this and all subsequent
+                # Only check if we successfully computed a value
+                if sub_value is not None and highest_sub_value > 0 and sub_value < highest_sub_value:
+                    # Sequence restarted - skip this and all subsequent for this parent
                     in_restart_sequence = True
                     continue
-                highest_sub_value = max(highest_sub_value, sub_value)
+                if sub_value is not None:
+                    highest_sub_value = max(highest_sub_value, sub_value)
                 node.parent = current_parent
                 # Context is the parent's intro text (before first sub)
                 if not current_parent.children:
