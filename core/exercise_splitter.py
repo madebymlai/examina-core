@@ -259,7 +259,10 @@ Identify the exact patterns used and return Python regex patterns:
    - ["(\\d+)\\.\\s"] matches "1. ", "2. " (numbered sub-questions)
    - ["([a-z])\\s*[).]", "(\\d+)\\.\\s"] matches BOTH letter and numbered sub-questions
    - ["[-•*]\\s+"] matches "- ", "• " (bullets)
+   - ["(\\d+)([a-z])\\s*[).]"] matches "1a)", "2b." (COMBINED: number+letter, use when sub-markers include parent number)
+   - ["([a-z])(\\d+)\\s*[).]"] matches "a1)", "b2." (COMBINED: letter+number variant)
    IMPORTANT: If document has BOTH letter (a, b, c) AND numbered (1., 2., 3.) sub-questions, return BOTH patterns!
+   IMPORTANT: If sub-markers include the parent number (like "1a", "2a" instead of just "a", "b"), use COMBINED format!
 
 3. SOLUTION_PATTERN - Keyword or regex for solution sections (if any).
 
