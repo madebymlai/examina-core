@@ -89,6 +89,8 @@ class Exercise:
     parent_exercise_number: Optional[str] = None  # "2" if this is "2a"
     sub_question_marker: Optional[str] = None     # "a", "b", "c", "i", "ii", etc.
     is_sub_question: bool = False
+    # Parent context (LLM-generated summary of parent exercise setup)
+    parent_context: Optional[str] = None
 
     def get_preview_text(self, max_length: int = 100) -> str:
         """Get a clean preview of the exercise text for display.
@@ -604,6 +606,148 @@ def _fuzzy_find(text: str, search_term: str, start_from: int = 0) -> int:
     return -1
 
 
+# ============================================================================
+# SECOND-PASS: End markers and parent context generation
+# ============================================================================
+
+
+def _get_second_pass_results(
+    hierarchy: List["ExerciseNode"],
+    llm_manager: "LLMManager",
+) -> Optional[Dict[str, Dict[str, str]]]:
+    """Second LLM pass: get end markers AND context summaries.
+
+    Uses Sonnet (or other high-quality model) for better instruction following.
+
+    Returns dict mapping exercise number to:
+    - For sub-questions and standalone: {"end_marker": "..."}
+    - For parents with children: {"context_summary": "..."}
+    """
+    # Build context showing each extracted exercise
+    exercises_info = []
+
+    def collect_exercises(nodes: List["ExerciseNode"], parent_num: str = ""):
+        for node in nodes:
+            num = node.marker.number
+            full_num = f"{parent_num}.{num}" if parent_num else num
+
+            # Show text preview (first 500 chars for context, last 200 for end detection)
+            text = node.question_text
+            if len(text) > 700:
+                text_preview = text[:500] + "\n...[middle truncated]...\n" + text[-200:]
+            else:
+                text_preview = text
+
+            has_children = len(node.children) > 0
+            is_sub = node.parent is not None
+
+            exercises_info.append({
+                "number": full_num,
+                "type": "sub-question" if is_sub else ("parent_with_children" if has_children else "standalone"),
+                "has_children": has_children,
+                "text": text_preview,
+            })
+
+            # Recurse for children
+            if node.children:
+                collect_exercises(node.children, full_num)
+
+    collect_exercises(hierarchy)
+
+    if not exercises_info:
+        return None
+
+    # Build prompt with differentiated output based on type
+    exercises_text = "\n\n".join([
+        f"EXERCISE {ex['number']} (type: {ex['type']}):\n\"\"\"\n{ex['text']}\n\"\"\""
+        for ex in exercises_info
+    ])
+
+    prompt = f"""I extracted exercises from an exam PDF. For each one, return either:
+
+1. For "sub-question" or "standalone" exercises:
+   Return "end_marker": the LAST 40-60 characters of the actual question (before junk like form fields, page numbers, exam instructions)
+
+2. For "parent_with_children" exercises:
+   Return "context_summary": a concise summary (1-2 sentences) of the essential setup/data that sub-questions need.
+   Include: problem data, numbers, constraints, shared task description
+   Exclude: exam instructions, form fields, verbose explanations, the sub-question texts themselves
+   If the parent is just instructions with no useful data, return null.
+
+EXERCISES:
+{exercises_text}
+
+Return JSON with one entry per exercise above. Format:
+{{"results": [{{"number": "<exercise_number>", "end_marker": "..."}} or {{"number": "<exercise_number>", "context_summary": "..."}}, ...]}}
+
+CRITICAL:
+- end_marker must be from the END of the question, not the beginning
+- end_marker should be 40-60 characters
+- context_summary should be concise (under 100 words)
+"""
+
+    try:
+        llm_response = llm_manager.generate(prompt, temperature=0.0)
+        response_text = llm_response.text if hasattr(llm_response, 'text') else str(llm_response)
+        # Parse JSON from response
+        json_match = re.search(r'\{[\s\S]*\}', response_text)
+        if json_match:
+            data = json.loads(json_match.group())
+            results = data.get("results", [])
+            # Convert to dict keyed by number
+            return {item["number"]: item for item in results}
+    except Exception as e:
+        logger.warning(f"Second-pass LLM failed: {e}")
+
+    return None
+
+
+def _apply_second_pass_results(
+    hierarchy: List["ExerciseNode"],
+    results: Dict[str, Dict[str, str]],
+) -> None:
+    """Apply second-pass results to hierarchy (in-place).
+
+    - Apply end_marker trimming to subs and standalone
+    - Store context_summary on parent nodes for later use
+    """
+    def apply_to_nodes(nodes: List["ExerciseNode"], parent_num: str = ""):
+        for node in nodes:
+            num = node.marker.number
+            full_num = f"{parent_num}.{num}" if parent_num else num
+
+            result = results.get(full_num, {})
+
+            # Apply end_marker trimming
+            end_marker = result.get("end_marker")
+            if end_marker:
+                # Clean up marker (strip ellipsis)
+                clean_marker = end_marker.strip().strip("...").strip("…").strip()
+                if len(clean_marker) >= 10:  # Minimum viable marker length
+                    # Find in question_text
+                    pos = _fuzzy_find(node.question_text, clean_marker, 0)
+                    if pos >= 0:
+                        # Trim at end of marker
+                        old_len = len(node.question_text)
+                        node.question_text = node.question_text[:pos + len(clean_marker)].strip()
+                        trimmed = old_len - len(node.question_text)
+                        if trimmed > 0:
+                            logger.info(f"Exercise {full_num}: trimmed {trimmed} chars at end marker")
+                    else:
+                        logger.debug(f"Exercise {full_num}: end marker not found in text")
+
+            # Store context_summary on parent node (will be passed to children later)
+            context_summary = result.get("context_summary")
+            if context_summary and context_summary != "null":
+                node.context_summary = context_summary  # Store for _expand_exercises
+
+            # Recurse for children
+            if node.children:
+                apply_to_nodes(node.children, full_num)
+
+    apply_to_nodes(hierarchy)
+
+
 def _fix_decimal_pattern(pattern_str: str) -> str:
     r"""Add negative lookahead after dots in numbered patterns to avoid matching decimals.
 
@@ -853,17 +997,34 @@ def _build_hierarchy(markers: List[Marker], full_text: str) -> List[ExerciseNode
     if not markers:
         return []
 
+    # Pre-compute parent end positions (next parent or end of text)
+    # This allows parent to capture ALL text including parts after sub-questions
+    parent_end_positions: Dict[int, int] = {}
+    parent_indices = [i for i, m in enumerate(markers) if m.marker_type == MarkerType.PARENT]
+    for idx, pi in enumerate(parent_indices):
+        if idx + 1 < len(parent_indices):
+            parent_end_positions[pi] = markers[parent_indices[idx + 1]].start_position
+        else:
+            parent_end_positions[pi] = len(full_text)
+
     roots: List[ExerciseNode] = []
     current_parent: Optional[ExerciseNode] = None
+    current_parent_idx: int = -1
     highest_sub_value: int = 0  # Track highest sub-marker value (number or letter ord)
     in_restart_sequence: bool = False  # Skip all subs after restart detected
 
     for i, marker in enumerate(markers):
-        # Find end position (next marker or end of text)
-        if i + 1 < len(markers):
-            end_pos = markers[i + 1].start_position
+        # Find end position
+        if marker.marker_type == MarkerType.PARENT:
+            # Parent: capture ALL text up to next parent (includes text after subs)
+            end_pos = parent_end_positions.get(i, len(full_text))
+            current_parent_idx = i
         else:
-            end_pos = len(full_text)
+            # Sub-question: capture text up to next marker
+            if i + 1 < len(markers):
+                end_pos = markers[i + 1].start_position
+            else:
+                end_pos = len(full_text)
 
         # Extract text for this marker
         text_content = full_text[marker.question_start:end_pos].strip()
@@ -943,11 +1104,9 @@ def _expand_exercises(
         List of Exercise objects ready for analysis
     """
     exercises: List[Exercise] = []
-    counter = 0
 
     def get_page_number(char_pos: int) -> int:
         """Find page number for a character position."""
-        # Find the largest position that's <= char_pos
         page = 1
         for pos, pg in sorted(page_lookup.items()):
             if pos <= char_pos:
@@ -957,44 +1116,32 @@ def _expand_exercises(
         return page
 
     for parent in hierarchy:
-        counter += 1
         parent_num = parent.marker.number
         page_num = get_page_number(parent.marker.start_position)
 
-        # Always emit the parent exercise first
-        parent_exercise_id = _generate_exercise_id(
-            course_code, source_pdf, page_num, counter
-        )
-        exercises.append(Exercise(
-            id=parent_exercise_id,
-            text=parent.question_text,
-            page_number=page_num,
-            exercise_number=parent_num,
-            has_images=False,
-            image_data=[],
-            has_latex=False,
-            latex_content=None,
-            source_pdf=source_pdf,
-        ))
-
         if parent.children:
-            # Parent has sub-questions - emit each with just the sub-question text
+            # Parent with children - DON'T emit parent as separate exercise
+            # Use context_summary (from second-pass) or fallback to full question_text
+            parent_ctx = getattr(parent, "context_summary", None) or parent.question_text
+
             for child in parent.children:
-                counter += 1
-                # Only include the sub-question text, not the parent context
-                # Parent text is accessible via parent_exercise_number relationship
                 sub_text = child.question_text.strip()
 
+                # Skip empty sub-questions (marker detected but no actual content)
+                if not sub_text:
+                    continue
+
                 child_page_num = get_page_number(child.marker.start_position)
+                ex_num = f"{parent_num}.{child.marker.number}"
                 exercise_id = _generate_exercise_id(
-                    course_code, source_pdf, child_page_num, counter
+                    course_code, source_pdf, ex_num, child.marker.start_position
                 )
 
                 exercises.append(Exercise(
                     id=exercise_id,
                     text=sub_text,
                     page_number=child_page_num,
-                    exercise_number=f"{parent_num}.{child.marker.number}",
+                    exercise_number=ex_num,
                     has_images=False,  # Will be enriched later
                     image_data=[],
                     has_latex=False,
@@ -1003,7 +1150,24 @@ def _expand_exercises(
                     parent_exercise_number=parent_num,
                     sub_question_marker=child.marker.number,
                     is_sub_question=True,
+                    parent_context=parent_ctx,
                 ))
+        else:
+            # Standalone exercise - emit it directly
+            exercise_id = _generate_exercise_id(
+                course_code, source_pdf, parent_num, parent.marker.start_position
+            )
+            exercises.append(Exercise(
+                id=exercise_id,
+                text=parent.question_text,
+                page_number=page_num,
+                exercise_number=parent_num,
+                has_images=False,
+                image_data=[],
+                has_latex=False,
+                latex_content=None,
+                source_pdf=source_pdf,
+            ))
 
     return exercises
 
@@ -1197,25 +1361,27 @@ def _extract_appendix_solutions(
 def _generate_exercise_id(
     course_code: str,
     source_pdf: str,
-    page_number: int,
-    counter: int,
+    exercise_number: str,
+    char_position: int,
 ) -> str:
     """Generate a unique exercise ID.
 
     Args:
         course_code: Course code
         source_pdf: Source PDF filename
-        page_number: Page number
-        counter: Exercise counter
+        exercise_number: Exercise number (e.g. "1", "1.a", "2.b")
+        char_position: Character position in document (guarantees uniqueness)
 
     Returns:
         Unique exercise ID
     """
-    components = f"{course_code}_{source_pdf}_{page_number}_{counter}"
+    # char_position ensures uniqueness even with duplicate exercise numbers
+    components = f"{course_code}_{source_pdf}_{exercise_number}_{char_position}"
     hash_obj = hashlib.md5(components.encode())
     short_hash = hash_obj.hexdigest()[:12]
     course_abbrev = course_code.lower().replace('b', '').replace('0', '')[:6]
-    return f"{course_abbrev}_{counter:04d}_{short_hash}"
+    ex_num_clean = exercise_number.replace(".", "_")
+    return f"{course_abbrev}_{ex_num_clean}_{short_hash}"
 
 
 def _split_unstructured(
@@ -1322,18 +1488,22 @@ class ExerciseSplitter:
         pdf_content: PDFContent,
         course_code: str,
         llm_manager: "LLMManager",
+        second_pass_llm: Optional["LLMManager"] = None,
     ) -> List[Exercise]:
         """Split PDF using LLM-based pattern detection with sub-question context.
 
         This method uses LLM to detect the exercise marker pattern, then:
         1. Finds all markers in the full document
         2. Builds a hierarchical structure (parent → children)
-        3. Expands to flat list with context prepended to sub-questions
+        3. (Optional) Second-pass LLM for end markers and context summaries
+        4. Expands to flat list with context prepended to sub-questions
 
         Args:
             pdf_content: Extracted PDF content
             course_code: Course code for ID generation
-            llm_manager: LLM manager for pattern detection
+            llm_manager: LLM manager for pattern detection (first pass)
+            second_pass_llm: Optional LLM for second-pass (end markers, context summaries).
+                             Use a high-quality model like Sonnet for best results.
 
         Returns:
             List of extracted exercises with context
@@ -1423,6 +1593,15 @@ class ExerciseSplitter:
         # Step 4: Build hierarchy
         hierarchy = _build_hierarchy(markers, full_text)
         logger.info(f"Built hierarchy with {len(hierarchy)} root exercises")
+
+        # Step 4.5: Second pass for end markers and context summaries
+        if second_pass_llm:
+            second_pass_results = _get_second_pass_results(hierarchy, second_pass_llm)
+            if second_pass_results:
+                _apply_second_pass_results(hierarchy, second_pass_results)
+                logger.info(f"Applied second-pass results to {len(second_pass_results)} exercises")
+            else:
+                logger.warning("Second-pass returned no results")
 
         # Step 5: Expand to flat list with context
         exercises = _expand_exercises(
@@ -1768,30 +1947,16 @@ class ExerciseSplitter:
         # In Phase 3, we could use LLM to detect split exercises
         return exercises
 
-    def validate_exercise(self, exercise: Exercise, min_length: int = 20) -> bool:
-        """Validate if an exercise has sufficient content.
+    def validate_exercise(self, exercise: Exercise) -> bool:
+        """Validate if an exercise has content.
 
         Args:
             exercise: Exercise to validate
-            min_length: Minimum text length
 
         Returns:
-            True if exercise is valid
+            True if exercise is valid (non-empty)
         """
-        # Check minimum text length
-        if len(exercise.text.strip()) < min_length:
-            return False
-
-        # Sub-questions can be shorter (e.g., "La capacita' di agire")
-        # They get context from their parent exercise
-        if exercise.is_sub_question:
-            return True
-
-        # Parent exercises need at least 5 words to avoid headers
-        if len(exercise.text.split()) < 5:
-            return False
-
-        return True
+        return bool(exercise.text.strip())
 
     def clean_exercise_text(self, text: str) -> str:
         """Clean up exercise text.
