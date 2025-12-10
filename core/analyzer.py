@@ -61,7 +61,7 @@ class KnowledgeItemInfo:
     The primary format for knowledge extraction. Replaces ProcedureInfo.
     """
     name: str  # snake_case identifier
-    knowledge_type: str  # definition, theorem, proof, procedure, fact, formula, algorithm, etc.
+    knowledge_type: Optional[str] = None  # DEPRECATED - no longer extracted, will be removed
     learning_approach: Optional[str] = None  # procedural, conceptual, factual, analytical
 
 
@@ -201,7 +201,7 @@ class ExerciseAnalyzer:
             item_data = data["knowledge_item"]
             knowledge_items.append(KnowledgeItemInfo(
                 name=item_data.get("name", "unknown"),
-                knowledge_type=item_data.get("knowledge_type", "key_concept"),
+                knowledge_type=None,  # DEPRECATED - no longer extracted
                 learning_approach=item_data.get("learning_approach"),
             ))
 
@@ -267,8 +267,7 @@ Use this context to understand what topic/scenario this sub-question belongs to.
         if existing_context:
             base_prompt += self._build_context_section(existing_context)
 
-        # Build knowledge type and learning approach options from constants
-        knowledge_types_str = "|".join(KNOWLEDGE_TYPES)
+        # Build learning approach options from constants
         learning_approaches_str = "|".join(LEARNING_APPROACHES)
 
         # Add language instruction (supports any ISO 639-1 language)
@@ -284,7 +283,6 @@ Respond in JSON format:
   "confidence": 0.0-1.0,
   "knowledge_item": {{
     "name": "snake_case_name",  // e.g., "base_conversion_binary", "fsm_design"
-    "knowledge_type": "{knowledge_types_str}",
     "learning_approach": "{learning_approaches_str}"
   }}
 }}
@@ -297,12 +295,11 @@ KNOWLEDGE ITEM (CRITICAL - the ONE core skill being tested):
 Ask: "If a student fails this exercise, what specific skill are they missing?"
 Ask: "What would this exercise be called in a study guide?"
 
-KNOWLEDGE TYPE:
-- PERFORM/CALCULATE/DESIGN/BUILD → procedure or algorithm
-- EXPLAIN/DEFINE/DESCRIBE → definition or key_concept
-- PROVE/DERIVE/DEMONSTRATE → proof or derivation
-- STATE/RECALL (a theorem/law) → theorem or formula
-- MEMORIZE/KNOW (a fact) → fact
+LEARNING APPROACH (determines how student will study this):
+- procedural = exercise asks to APPLY steps/calculate/solve/design/build
+- conceptual = exercise asks to EXPLAIN/compare/reason why/describe differences
+- factual = exercise asks to RECALL specific facts/definitions/formulas
+- analytical = exercise asks to ANALYZE/evaluate/critique/prove
 
 NAMING:
 - Name the CONCEPT being tested, not the TASK being performed

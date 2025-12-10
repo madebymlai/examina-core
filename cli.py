@@ -849,10 +849,9 @@ async def analyze_async(course, limit, provider, profile, lang, force, parallel,
             procedure_cache = None
             if Config.PROCEDURE_CACHE_ENABLED:
                 from core.procedure_cache import ProcedureCache
-                from core.semantic_matcher import SemanticMatcher
                 try:
-                    semantic_matcher = SemanticMatcher() if Config.SEMANTIC_SIMILARITY_ENABLED else None
-                    procedure_cache = ProcedureCache(db, semantic_matcher, user_id=None)
+                    # SemanticMatcher removed - using LLM-based detect_synonyms() instead
+                    procedure_cache = ProcedureCache(db, semantic_matcher=None, user_id=None)
                     if Config.PROCEDURE_CACHE_PRELOAD:
                         procedure_cache.load_cache(course_code)
                     console.print(f"   ✓ Procedure cache enabled ({len(procedure_cache._entries)} patterns)\n")
@@ -862,11 +861,8 @@ async def analyze_async(course, limit, provider, profile, lang, force, parallel,
 
             analyzer = ExerciseAnalyzer(llm, language=lang, monolingual=monolingual, procedure_cache=procedure_cache)
 
-            # Initialize translation detector for language detection
-            from core.translation_detector import TranslationDetector
-            translation_detector = TranslationDetector(llm_manager=llm) if Config.LANGUAGE_DETECTION_ENABLED else None
-            if translation_detector:
-                console.print(f"   ✓ Language detection enabled\n")
+            # Translation detector removed - names always extracted in English
+            translation_detector = None
 
             # For embeddings, we still need Ollama (Groq/Anthropic don't provide embeddings)
             embed_llm = LLMManager(provider="ollama") if effective_provider in ["groq", "anthropic"] else llm
@@ -1231,11 +1227,10 @@ def analyze_sync(course, limit, provider, profile, lang, force, parallel, batch_
         procedure_cache = None
         if Config.PROCEDURE_CACHE_ENABLED:
             from core.procedure_cache import ProcedureCache
-            from core.semantic_matcher import SemanticMatcher
             try:
                 with Database() as cache_db:
-                    semantic_matcher = SemanticMatcher() if Config.SEMANTIC_SIMILARITY_ENABLED else None
-                    procedure_cache = ProcedureCache(cache_db, semantic_matcher, user_id=None)
+                    # SemanticMatcher removed - using LLM-based detect_synonyms() instead
+                    procedure_cache = ProcedureCache(cache_db, semantic_matcher=None, user_id=None)
                     if Config.PROCEDURE_CACHE_PRELOAD:
                         procedure_cache.load_cache(course_code)
                     console.print(f"   ✓ Procedure cache enabled ({len(procedure_cache._entries)} patterns)\n")
@@ -1245,11 +1240,8 @@ def analyze_sync(course, limit, provider, profile, lang, force, parallel, batch_
 
         analyzer = ExerciseAnalyzer(llm, language=lang, monolingual=monolingual, procedure_cache=procedure_cache)
 
-        # Initialize translation detector for language detection
-        from core.translation_detector import TranslationDetector
-        translation_detector = TranslationDetector(llm_manager=llm) if Config.LANGUAGE_DETECTION_ENABLED else None
-        if translation_detector:
-            console.print(f"   ✓ Language detection enabled\n")
+        # Translation detector removed - names always extracted in English
+        translation_detector = None
 
         # For embeddings, we still need Ollama (Groq/Anthropic don't provide embeddings)
         embed_llm = LLMManager(provider="ollama") if effective_provider in ["groq", "anthropic"] else llm
@@ -3146,54 +3138,40 @@ def gaps(course, loop, lang):
 @click.option('--bilingual', is_flag=True, help='Enable LLM-based translation matching (works for ANY language pair)')
 @click.option('--clean-orphans', is_flag=True, help='Delete orphaned core loops with no exercises')
 def deduplicate(course, dry_run, threshold, bilingual, clean_orphans):
-    """Merge duplicate exercises, topics, and core loops using semantic similarity."""
+    """Merge duplicate exercises, topics, and core loops using LLM-based synonym detection."""
     from difflib import SequenceMatcher
     import hashlib
 
-    # Try to import semantic matcher and LLM manager
+    # Try to import LLM manager and detect_synonyms
+    semantic_matcher = None  # Removed - using LLM-based detect_synonyms() instead
+    llm_manager = None
     try:
-        from core.semantic_matcher import SemanticMatcher
         from models.llm_manager import LLMManager
+        from core.post_processor import detect_synonyms
 
-        # Create LLM manager for dynamic opposite detection and translation detection
+        # Create LLM manager for synonym detection
         llm_provider = Config.LLM_PROVIDER
         llm_manager = LLMManager(provider=llm_provider)
         console.print(f"[info]LLM provider: {llm_provider}[/info]")
 
         if Config.SEMANTIC_SIMILARITY_ENABLED:
-            # Enable translation detection if bilingual flag is set
-            enable_translation = bilingual and getattr(Config, 'TRANSLATION_DETECTION_ENABLED', True)
-            semantic_matcher = SemanticMatcher(
-                llm_manager=llm_manager,
-                enable_translation_detection=enable_translation
-            )
-            use_semantic = semantic_matcher.enabled
-            if use_semantic:
-                features = ["semantic matching", "dynamic opposite detection"]
-                if enable_translation:
-                    features.append("LLM-based translation detection")
-                console.print(f"[info]Using: {', '.join(features)}[/info]")
-                default_threshold = Config.SEMANTIC_SIMILARITY_THRESHOLD
-            else:
-                console.print("[yellow]Semantic matcher unavailable, using string similarity[/yellow]")
-                use_semantic = False
-                default_threshold = Config.CORE_LOOP_SIMILARITY_THRESHOLD
+            console.print(f"[info]Using: LLM-based synonym detection (anonymous approach)[/info]")
+            use_semantic = True
+            default_threshold = Config.SEMANTIC_SIMILARITY_THRESHOLD
         else:
             console.print("[info]Semantic matching disabled, using string similarity[/info]")
             use_semantic = False
-            semantic_matcher = None
             default_threshold = Config.CORE_LOOP_SIMILARITY_THRESHOLD
     except ImportError as e:
-        console.print(f"[yellow]SemanticMatcher not available ({e}), using string similarity[/yellow]")
+        console.print(f"[yellow]LLM-based synonym detection not available ({e}), using string similarity[/yellow]")
         use_semantic = False
-        semantic_matcher = None
         default_threshold = Config.CORE_LOOP_SIMILARITY_THRESHOLD
 
     # Use provided threshold or default
     threshold = threshold if threshold is not None else default_threshold
 
     # REMOVED: Hardcoded bilingual_translations dictionary
-    # Now using LLM-based translation detection in TranslationDetector (see core/translation_detector.py)
+    # Translation detection removed - names always extracted in English
 
     console.print(f"\n[bold cyan]Deduplicating {course}...[/bold cyan]")
     console.print(f"[info]Threshold: {threshold:.2f}[/info]")
@@ -3675,7 +3653,6 @@ def pattern_cache(course, action, force):
     from rich.table import Table
     from rich.panel import Panel
     from core.procedure_cache import ProcedureCache
-    from core.semantic_matcher import SemanticMatcher
 
     try:
         with Database() as db:
@@ -3747,22 +3724,12 @@ def pattern_cache(course, action, force):
                 else:
                     console.print("[bold]Scope:[/bold] All courses\n")
 
-                # Initialize semantic matcher for embeddings
+                # SemanticMatcher removed - using LLM-based detect_synonyms() instead
                 semantic_matcher = None
-                if Config.SEMANTIC_SIMILARITY_ENABLED:
-                    console.print("🔄 Initializing semantic matcher for embeddings...")
-                    try:
-                        semantic_matcher = SemanticMatcher()
-                        if semantic_matcher.enabled:
-                            console.print(f"   ✓ Embeddings enabled (model: {Config.SEMANTIC_EMBEDDING_MODEL})\n")
-                        else:
-                            console.print("   ⚠ Embeddings unavailable, using text-only matching\n")
-                    except Exception as e:
-                        console.print(f"   ⚠ Embeddings unavailable: {e}\n")
-                        semantic_matcher = None
+                console.print("   ✓ Using LLM-based synonym detection\n")
 
                 # Initialize cache
-                cache = ProcedureCache(db, semantic_matcher, user_id=None)
+                cache = ProcedureCache(db, semantic_matcher=None, user_id=None)
                 cache.load_cache(course_code)
 
                 # Get analyzed exercises with procedures
@@ -3975,11 +3942,11 @@ def separate_solutions(course, dry_run, confidence_threshold, provider):
 @click.option('--dry-run', is_flag=True, default=False, help='Preview changes without updating database')
 @click.option('--force', is_flag=True, default=False, help='Re-detect language even if already set')
 def detect_languages(course, dry_run, force):
-    """Detect and store languages for core loops and topics (works for ANY language)."""
-    from core.translation_detector import TranslationDetector
-    from models.llm_manager import LLMManager
-
-    console.print(f"\n[bold cyan]Detecting Languages for {course}...[/bold cyan]\n")
+    """DEPRECATED: Language detection is no longer needed - names are always extracted in English."""
+    console.print(f"\n[bold yellow]DEPRECATED[/bold yellow]\n")
+    console.print("[yellow]Language detection is no longer needed.[/yellow]")
+    console.print("[yellow]Names are now always extracted in English during analysis.[/yellow]\n")
+    return
 
     if dry_run:
         console.print("[yellow]DRY RUN MODE - No changes will be made[/yellow]\n")

@@ -663,7 +663,7 @@ Return JSON:
 {{"results": [{{"number": "1", "end_marker": "last 40-60 chars"}}, ...]}}
 
 CRITICAL:
-- If exercise ends with sub-questions, end_marker should be from the LAST sub-question
+- If exercise ends with a sub-question, end_marker should be from the LAST sub-question
 - end_marker marks where THIS exercise ends, before junk or next exercise
 - end_marker should be 40-60 characters"""
 
@@ -1041,9 +1041,8 @@ def _find_sub_markers_in_boundaries(
         sub_pattern_str, sub_inline_flags = _strip_inline_flags(sub_pattern_raw)
         sub_pattern_str = _fix_decimal_pattern(sub_pattern_str)
 
-        # Wrap with (?:^|\n)\s* if not already anchored
-        if not sub_pattern_str.startswith(('(?:^', '^', '\\A')):
-            sub_pattern_str = rf'(?:^|\n)\s*{sub_pattern_str}'
+        # Don't anchor sub-patterns - they may appear inline after parent marker
+        # e.g., "(3) (a) Question text..." where (a) follows (3) on same line
 
         try:
             sub_compile_flags = re.MULTILINE | sub_inline_flags
