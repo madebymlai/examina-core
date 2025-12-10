@@ -292,9 +292,7 @@ Respond in JSON format:
     "name": "snake_case_name",  // e.g., "base_conversion_binary", "fsm_design"
     "knowledge_type": "{knowledge_types_str}",
     "learning_approach": "{learning_approaches_str}",
-    "content": {{}},  // For procedures: {{"steps": [...]}}, for definitions: {{"definition": "..."}}
-    "parent_name": "abstract parent or null",  // If variation of general concept
-    "variation_parameter": "what makes specific or null"  // e.g., "2x2 matrix"
+    "content": {{}}  // For procedures: {{"steps": [...]}}, for definitions: {{"definition": "..."}}
   }}
 }}
 
@@ -318,11 +316,6 @@ NAMING:
 - Ask: "What would a textbook chapter about this be titled?"
 - The name should make sense outside this exercise context
 - If multiple concepts are tested, pick the primary one
-
-VARIATION:
-- If specific case of general skill: set parent_name and variation_parameter
-- Example: "eigenvalue_2x2" → parent_name="eigenvalue_computation", variation_parameter="2x2 matrix"
-- If NOT a variation: parent_name=null, variation_parameter=null
 
 CONTEXT EXCLUSION:
 - Extract ONLY course concepts, NOT word problem scenarios
