@@ -291,8 +291,7 @@ Respond in JSON format:
   "knowledge_item": {{
     "name": "snake_case_name",  // e.g., "base_conversion_binary", "fsm_design"
     "knowledge_type": "{knowledge_types_str}",
-    "learning_approach": "{learning_approaches_str}",
-    "content": {{}}  // For procedures: {{"steps": [...]}}, for definitions: {{"definition": "..."}}
+    "learning_approach": "{learning_approaches_str}"
   }}
 }}
 
