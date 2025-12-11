@@ -24,12 +24,10 @@ Performance Impact:
 
 Usage Example:
     from storage.database import Database
-    from core.semantic_matcher import SemanticMatcher
     from core.procedure_cache import ProcedureCache
 
     db = Database()
-    semantic_matcher = SemanticMatcher()
-    cache = ProcedureCache(db, semantic_matcher)
+    cache = ProcedureCache(db)
 
     # Lookup exercise in cache
     result = cache.lookup("Design Mealy machine for pattern 110")
