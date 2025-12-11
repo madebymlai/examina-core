@@ -684,6 +684,18 @@ def _fuzzy_find(text: str, search_term: str, start_from: int = 0) -> int:
     if match:
         return match.start()
 
+    # Try with normalized apostrophes/quotes (PDF often has smart quotes)
+    def normalize_quotes(s: str) -> str:
+        return s.replace("'", "'").replace("'", "'").replace('"', '"').replace('"', '"')
+
+    text_norm = normalize_quotes(text)
+    search_norm = normalize_quotes(search_term)
+    search_normalized = re.sub(r'\s+', r'\\s+', re.escape(search_norm))
+    pattern = re.compile(search_normalized, re.IGNORECASE)
+    match = pattern.search(text_norm, start_from)
+    if match:
+        return match.start()
+
     return -1
 
 
@@ -728,11 +740,7 @@ def _get_parent_end_markers(
         end = rough_ends[marker.number]
         text = full_text[start:end].strip()
 
-        # Truncate for LLM (first 500 + last 200 chars)
-        if len(text) > 700:
-            text_preview = text[:500] + "\n...[middle truncated]...\n" + text[-200:]
-        else:
-            text_preview = text
+        text_preview = text
 
         exercises_info.append({
             "number": marker.number,
@@ -881,6 +889,7 @@ def _get_per_exercise_sub_patterns(
     prompt = f"""For each exercise below, determine if it contains sub-questions.
 
 Sub-questions are SEPARATE TASKS requiring SEPARATE ANSWERS.
+NOT sub-questions: definitions, lists of values, inline conditions, examples.
 
 EXERCISES:
 {exercises_text}
@@ -1005,6 +1014,10 @@ def _get_explicit_sub_questions(
     prompt = f"""For each exercise below, identify sub-questions if any.
 
 Sub-questions are SEPARATE TASKS requiring SEPARATE ANSWERS.
+
+Key distinction:
+- Sub-question: asks you to DO something (produce an answer, calculation, drawing)
+- NOT a sub-question: defines inputs, lists values, specifies conditions
 
 EXERCISES:
 {exercises_text}
@@ -1416,6 +1429,10 @@ def _find_sub_markers_in_boundaries(
                     number = match.group(1)
                 else:
                     # No capture groups (bullets) - mark for auto-numbering
+                    number = None
+
+                # Bullets need auto-numbering even if captured
+                if number and number in "-•*~":
                     number = None
 
                 question_start = pstart + match.end()
