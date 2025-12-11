@@ -7,6 +7,7 @@ import re
 import json
 import hashlib
 import logging
+import asyncio
 from typing import List, Dict, Any, Optional, Tuple, TYPE_CHECKING
 from dataclasses import dataclass, field
 from enum import Enum
@@ -654,7 +655,7 @@ def _fuzzy_find(text: str, search_term: str, start_from: int = 0) -> int:
 
     Handles common OCR issues:
     - Case differences
-    - Extra/missing spaces
+    - Extra/missing whitespace (including newlines in PDFs)
     - Common character substitutions (l/1, O/0)
 
     Args:
@@ -677,12 +678,16 @@ def _fuzzy_find(text: str, search_term: str, start_from: int = 0) -> int:
     if pos >= 0:
         return pos
 
-    # Try with normalized whitespace
-    search_normalized = re.sub(r'\s+', r'\\s+', re.escape(search_term))
-    pattern = re.compile(search_normalized, re.IGNORECASE)
-    match = pattern.search(text, start_from)
-    if match:
-        return match.start()
+    # Try with normalized whitespace - handles PDF line breaks
+    # Split search term into words, escape each, join with \s+ to match any whitespace
+    words = search_term.split()
+    if words:
+        pattern_parts = [re.escape(word) for word in words]
+        search_pattern = r'\s+'.join(pattern_parts)
+        pattern = re.compile(search_pattern, re.IGNORECASE)
+        match = pattern.search(text, start_from)
+        if match:
+            return match.start()
 
     # Try with normalized apostrophes/quotes (PDF often has smart quotes)
     def normalize_quotes(s: str) -> str:
@@ -690,11 +695,14 @@ def _fuzzy_find(text: str, search_term: str, start_from: int = 0) -> int:
 
     text_norm = normalize_quotes(text)
     search_norm = normalize_quotes(search_term)
-    search_normalized = re.sub(r'\s+', r'\\s+', re.escape(search_norm))
-    pattern = re.compile(search_normalized, re.IGNORECASE)
-    match = pattern.search(text_norm, start_from)
-    if match:
-        return match.start()
+    words = search_norm.split()
+    if words:
+        pattern_parts = [re.escape(word) for word in words]
+        search_pattern = r'\s+'.join(pattern_parts)
+        pattern = re.compile(search_pattern, re.IGNORECASE)
+        match = pattern.search(text_norm, start_from)
+        if match:
+            return match.start()
 
     return -1
 
@@ -966,6 +974,202 @@ Return null for sub_patterns if exercise has no sub-questions."""
     except Exception as e:
         logger.warning(f"Per-exercise sub_pattern detection failed: {e}")
         return {}
+
+
+# ============================================================================
+# EXPLICIT SUB-QUESTION DETECTION (Full-Sentence Mode)
+# ============================================================================
+
+
+def _get_subs_for_exercise(
+    exercise_text: str,
+    llm_manager: "LLMManager",
+) -> Optional[List[str]]:
+    """Get sub-questions for a single exercise using full-sentence detection.
+
+    Makes one LLM call per exercise, asking for the FULL FIRST SENTENCE of each
+    sub-question. This allows accurate location via fuzzy_find.
+
+    Args:
+        exercise_text: Full text of a single exercise
+        llm_manager: LLM manager for generation
+
+    Returns:
+        List of sub-question first sentences, or None if no subs
+    """
+    prompt = f"""Identify sub-questions in this exercise.
+
+Sub-questions are SEPARATE TASKS requiring SEPARATE ANSWERS (like a), b), c) or 1., 2., 3.).
+NOT sub-questions:
+- Formulas/equations that specify what ONE task should compute
+- Information GIVEN to students (definitions, context, constraints)
+
+EXERCISE:
+{exercise_text}
+
+Return the UNIQUE TEXT that identifies each sub-question.
+Copy EXACT text verbatim from the exercise. Include any marker.
+Each entry must be DIFFERENT - no duplicates allowed.
+
+Output valid JSON:
+{{"subs": ["first sub text...", "second sub text..."]}}
+
+If no sub-questions:
+{{"subs": null}}"""
+
+    try:
+        llm_response = llm_manager.generate(
+            prompt,
+            model="deepseek-chat",
+            temperature=0.0,
+            json_mode=True,
+        )
+        response_text = llm_response.text if hasattr(llm_response, 'text') else str(llm_response)
+
+        # Parse JSON
+        data = json.loads(response_text)
+        return data.get("subs")  # List[str] or None
+
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed to parse subs response: {e}")
+        return None
+    except Exception as e:
+        logger.warning(f"Sub detection failed: {e}")
+        return None
+
+
+async def _get_subs_for_all_exercises(
+    parent_markers: List[Marker],
+    full_text: str,
+    parent_boundaries: Dict[str, Tuple[int, int]],
+    llm_manager: "LLMManager",
+) -> Dict[str, Optional[List[str]]]:
+    """Get sub-questions for all exercises in parallel.
+
+    Launches one LLM call per exercise, all running simultaneously.
+    Total latency = slowest single exercise.
+
+    Args:
+        parent_markers: List of parent exercise markers
+        full_text: Full document text
+        parent_boundaries: Dict of exercise_number -> (start, end) positions
+        llm_manager: LLM for detection
+
+    Returns:
+        Dict mapping exercise_number -> list of sub first sentences (or None)
+    """
+    if not parent_markers or not parent_boundaries:
+        return {}
+
+    logger.info(f"Detecting explicit subs for {len(parent_markers)} exercises (parallel)...")
+
+    async def process_exercise(ex_num: str) -> Tuple[str, Optional[List[str]]]:
+        """Process a single exercise - runs in thread pool."""
+        if ex_num not in parent_boundaries:
+            return (ex_num, None)
+
+        start, end = parent_boundaries[ex_num]
+        exercise_text = full_text[start:end].strip()
+
+        try:
+            subs = await asyncio.to_thread(
+                _get_subs_for_exercise, exercise_text, llm_manager
+            )
+            return (ex_num, subs)
+        except Exception as e:
+            logger.warning(f"Exercise {ex_num}: sub detection failed: {e}")
+            return (ex_num, None)
+
+    # Launch all exercises in parallel
+    tasks = [process_exercise(m.number) for m in parent_markers]
+    results = await asyncio.gather(*tasks)
+
+    # Convert to dict and log
+    results_dict = dict(results)
+    with_subs = sum(1 for s in results_dict.values() if s)
+    logger.info(f"Explicit sub detection complete: {with_subs}/{len(parent_markers)} exercises have sub-questions")
+
+    return results_dict
+
+
+def _find_explicit_subs(
+    full_text: str,
+    explicit_subs_by_exercise: Dict[str, Optional[List[str]]],
+    parent_boundaries: Dict[str, Tuple[int, int]],
+    solution_ranges: List[Tuple[int, int]],
+) -> List[Marker]:
+    """Find sub-markers using full-sentence fuzzy matching.
+
+    Locates each sub-question by searching for its full first sentence
+    within the parent exercise boundaries.
+
+    Args:
+        full_text: Complete document text
+        explicit_subs_by_exercise: Dict of exercise_number -> list of sub sentences
+        parent_boundaries: Dict of exercise_number -> (start, end) positions
+        solution_ranges: List of (start, end) positions for solution sections
+
+    Returns:
+        List of sub-question Marker objects
+    """
+    if not explicit_subs_by_exercise or not parent_boundaries:
+        return []
+
+    def _is_in_solution_section(pos: int) -> bool:
+        for start, end in solution_ranges:
+            if start <= pos < end:
+                return True
+        return False
+
+    markers: List[Marker] = []
+
+    for ex_num, subs in explicit_subs_by_exercise.items():
+        if not subs:
+            continue
+
+        if ex_num not in parent_boundaries:
+            continue
+
+        pstart, pend = parent_boundaries[ex_num]
+        parent_text = full_text[pstart:pend]
+
+        # Find each sub and collect (position, text)
+        found_subs: List[Tuple[int, str]] = []
+        for sub_text in subs:
+            # Strip trailing punctuation that LLM might add and lowercase
+            # (LLM often capitalizes, but document might have lowercase)
+            search_text = sub_text.rstrip(':;.,').lower()
+            # Use fuzzy_find to locate within parent text
+            pos = _fuzzy_find(parent_text.lower(), search_text)
+            if pos >= 0:
+                # Skip if in solution section
+                abs_pos = pstart + pos
+                if _is_in_solution_section(abs_pos):
+                    logger.debug(f"Exercise {ex_num}: sub in solution section, skipped: {sub_text[:40]}...")
+                    continue
+                found_subs.append((pos, sub_text))
+            else:
+                logger.warning(f"Exercise {ex_num}: sub not found: {sub_text[:40]}...")
+
+        # Sort by position (handles out-of-order LLM response)
+        found_subs.sort(key=lambda x: x[0])
+
+        # Create markers with sequential numbering
+        for idx, (pos, sub_text) in enumerate(found_subs, start=1):
+            abs_pos = pstart + pos
+            # Extract marker character if present (first non-space char or bullet)
+            marker_text = sub_text[:20] if len(sub_text) > 20 else sub_text
+
+            markers.append(Marker(
+                marker_type=MarkerType.SUB,
+                marker_text=marker_text,
+                number=str(idx),
+                start_position=abs_pos,
+                question_start=abs_pos,
+            ))
+
+    logger.info(f"Found {len(markers)} explicit sub-markers")
+    return markers
 
 
 def _get_explicit_sub_questions(
@@ -1464,12 +1668,19 @@ def _find_sub_markers_in_boundaries(
     return markers
 
 
-def _build_hierarchy(markers: List[Marker], full_text: str) -> List[ExerciseNode]:
+def _build_hierarchy(
+    markers: List[Marker],
+    full_text: str,
+    llm_end_positions: Optional[Dict[str, int]] = None,
+) -> List[ExerciseNode]:
     """Build hierarchical exercise structure from markers.
 
     Args:
         markers: List of detected markers (sorted by position)
         full_text: Complete document text
+        llm_end_positions: Optional dict mapping exercise number (string) to end position
+                          from LLM Call 2 (_get_parent_end_markers). If provided, these
+                          positions are used instead of computing from next parent.
 
     Returns:
         List of root ExerciseNode objects (parent exercises)
@@ -1477,12 +1688,16 @@ def _build_hierarchy(markers: List[Marker], full_text: str) -> List[ExerciseNode
     if not markers:
         return []
 
-    # Pre-compute parent end positions (next parent or end of text)
-    # This allows parent to capture ALL text including parts after sub-questions
+    # Pre-compute parent end positions
+    # Use LLM-provided positions if available, otherwise use next parent or end of text
     parent_end_positions: Dict[int, int] = {}
     parent_indices = [i for i, m in enumerate(markers) if m.marker_type == MarkerType.PARENT]
     for idx, pi in enumerate(parent_indices):
-        if idx + 1 < len(parent_indices):
+        marker = markers[pi]
+        # Check if LLM provided a more accurate end position for this exercise
+        if llm_end_positions and marker.number in llm_end_positions:
+            parent_end_positions[pi] = llm_end_positions[marker.number]
+        elif idx + 1 < len(parent_indices):
             parent_end_positions[pi] = markers[parent_indices[idx + 1]].start_position
         else:
             parent_end_positions[pi] = len(full_text)
@@ -2080,6 +2295,9 @@ class ExerciseSplitter:
 
             logger.info(f"Found {len(parent_markers)} parent markers")
 
+            # Initialize - will be populated by Call 2 if second_pass_llm available
+            parent_end_positions: Optional[Dict[str, int]] = None
+
             # Step 3b: Get parent end positions (Call 2: boundary_llm)
             if second_pass_llm:
                 logger.info("Getting parent end markers...")
@@ -2095,18 +2313,18 @@ class ExerciseSplitter:
                     end = parent_end_positions.get(marker.number, len(full_text))
                     parent_boundaries[marker.number] = (start, end)
 
-                # Step 3c: Get per-exercise sub_patterns (Call 3: sub_pattern_llm)
-                sub_patterns_by_exercise = _get_per_exercise_sub_patterns(
-                    parent_markers, full_text, parent_boundaries, second_pass_llm
+                # Step 3c: Get explicit sub-questions (parallel LLM calls per exercise)
+                explicit_subs_by_exercise = asyncio.run(
+                    _get_subs_for_all_exercises(
+                        parent_markers, full_text, parent_boundaries, second_pass_llm
+                    )
                 )
 
-                # Step 3d: Find sub markers within boundaries using per-exercise patterns
-                if sub_patterns_by_exercise:
-                    logger.info("Finding sub-markers within parent boundaries...")
-                    sub_markers = _find_sub_markers_in_boundaries(
-                        full_text, sub_patterns_by_exercise, parent_boundaries, solution_ranges
+                # Step 3d: Find sub markers using full-sentence fuzzy matching
+                if explicit_subs_by_exercise:
+                    sub_markers = _find_explicit_subs(
+                        full_text, explicit_subs_by_exercise, parent_boundaries, solution_ranges
                     )
-                    logger.info(f"Found {len(sub_markers)} sub-markers")
 
                     # Combine and sort all markers
                     markers = sorted(
@@ -2114,8 +2332,8 @@ class ExerciseSplitter:
                         key=lambda m: m.start_position
                     )
                 else:
-                    # No sub-patterns for any exercise
-                    logger.info("No sub-patterns detected for any exercise")
+                    # No subs detected for any exercise
+                    logger.info("No sub-questions detected for any exercise")
                     markers = parent_markers
             else:
                 # No second pass LLM - just use parent markers
@@ -2128,7 +2346,8 @@ class ExerciseSplitter:
         logger.info(f"Found {len(markers)} total markers")
 
         # Step 4: Build hierarchy
-        hierarchy = _build_hierarchy(markers, full_text)
+        # Pass parent_end_positions from Call 2 if available (for accurate end boundaries)
+        hierarchy = _build_hierarchy(markers, full_text, parent_end_positions)
         logger.info(f"Built hierarchy with {len(hierarchy)} root exercises")
 
         # Step 5: Second pass for sub end markers and context summaries (Sonnet call 2)

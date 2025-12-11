@@ -118,8 +118,8 @@ TEST_CASES = [
     PDFTestCase(
         path="/home/laimk/git/examina-cloud/test-data/ADE-ESAMI/Compito - Prima Prova Intermedia 10-02-2020 - Soluzioni.pdf",
         course_code="ADE",
-        expected=ExpectedResult(total=7, parents=4, subs=3, with_solutions=7),
-        description="ADE exam with 4 exercises (1 has 3 sub-parts), all with solutions",
+        expected=ExpectedResult(total=15, parents=1, subs=14, with_solutions=0),
+        description="ADE exam: Ex1 (3 subs), Ex2 (3 subs), Ex3 (3 subs), Ex4 (5 subs), Ex5 (standalone)",
     ),
     PDFTestCase(
         path="/home/laimk/git/examina-cloud/test-data/AL-ESAMI/20120612 - appello.pdf",
