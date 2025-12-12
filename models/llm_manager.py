@@ -39,7 +39,7 @@ class LLMResponse:
 class LLMManager:
     """Manages LLM interactions for Examina."""
 
-    def __init__(self, provider: str = "ollama", base_url: Optional[str] = None):
+    def __init__(self, provider: str = "deepseek", base_url: Optional[str] = None):
         """Initialize LLM manager.
 
         Args:
