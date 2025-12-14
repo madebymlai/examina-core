@@ -1,0 +1,36 @@
+# Golden regression tests for pipeline validation
+# Run with: python test_pipeline.py --golden
+#
+# Expected counts should match within GOLDEN_TOLERANCE (default: 1)
+# to account for minor LLM non-determinism
+
+tolerance: 1
+
+tests:
+  - path: ADE-EXAMS/Prova intermedia 2024-01-29 - SOLUZIONI v4.pdf
+    expected:
+      total: 13
+      parents: 1
+      subs: 12
+      with_solutions: 13
+
+  - path: ADE-EXAMS/Compito - Prima Prova Intermedia 10-02-2020 - Soluzioni.pdf
+    expected:
+      total: 11
+      parents: 2
+      subs: 9
+      with_solutions: 11
+
+  - path: AL-EXAMS/20120612 - appello.pdf
+    expected:
+      total: 10
+      parents: 0
+      subs: 10
+      with_solutions: 0
+
+  - path: SO-EXAMS/SOfebbraio2020.pdf
+    expected:
+      total: 21
+      parents: 6
+      subs: 15
+      with_solutions: 0
