@@ -145,7 +145,7 @@ class Config:
     # Smart Splitting Settings
     SMART_SPLIT_ENABLED = os.getenv("EXAMINA_SMART_SPLIT_ENABLED", "false").lower() == "true"
     SMART_SPLIT_CONFIDENCE_THRESHOLD = float(os.getenv("EXAMINA_SMART_SPLIT_THRESHOLD", "0.7"))
-    SMART_SPLIT_MAX_PAGES = int(os.getenv("EXAMINA_SMART_SPLIT_MAX_PAGES", "50"))
+    SMART_SPLIT_MAX_PAGES = int(os.getenv("EXAMINA_SMART_SPLIT_MAX_PAGES", "20"))
     SMART_SPLIT_CACHE_ENABLED = os.getenv("EXAMINA_SMART_SPLIT_CACHE", "true").lower() == "true"
 
     # Phase 10: Learning Materials Settings
