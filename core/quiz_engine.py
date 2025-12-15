@@ -3,19 +3,19 @@ Quiz engine for Examina.
 Manages quiz sessions, question selection, and spaced repetition.
 """
 
-import uuid
 import random
-from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Any
+import uuid
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
-from storage.database import Database
+from config import Config
+from core.mastery_aggregator import MasteryAggregator
+from core.proof_tutor import ProofTutor
+from core.sm2 import SM2Algorithm
 from core.tutor import Tutor
 from models.llm_manager import LLMManager
-from config import Config
-from core.proof_tutor import ProofTutor
-from core.mastery_aggregator import MasteryAggregator
-from core.sm2 import SM2Algorithm
+from storage.database import Database
 
 
 @dataclass
@@ -27,11 +27,8 @@ class QuizQuestion:
     exercise_text: str
     knowledge_item_id: str
     knowledge_item_name: str
-    topic_name: str
     difficulty: str
-    knowledge_items: Optional[List[Dict[str, Any]]] = (
-        None  # List of all core loops for multi-procedure exercises
-    )
+    knowledge_items: Optional[List[Dict[str, Any]]] = None
     user_answer: Optional[str] = None
     is_correct: Optional[bool] = None
     score: Optional[float] = None
@@ -46,7 +43,7 @@ class QuizSession:
 
     session_id: str
     course_code: str
-    quiz_type: str  # 'random', 'topic', 'knowledge_item', 'review'
+    quiz_type: str  # 'random', 'knowledge_item', 'review'
     questions: List[QuizQuestion]
     total_questions: int
     current_question: int = 0
@@ -54,7 +51,6 @@ class QuizSession:
     completed_at: Optional[datetime] = None
     total_correct: int = 0
     score: float = 0.0
-    topic_id: Optional[int] = None
     knowledge_item_id: Optional[str] = None
 
 
@@ -395,7 +391,7 @@ class QuizEngine:
         selected = []
 
         with Database() as db:
-            aggregator = MasteryAggregator(db)
+            MasteryAggregator(db)
 
             # Base query for exercises with mastery info
             base_query = """
@@ -579,9 +575,8 @@ class QuizEngine:
             session.score = sum(q.score for q in answered_questions) / len(answered_questions)
 
         # Calculate total time
-        total_time = 0
         if session.started_at and session.completed_at:
-            total_time = int((session.completed_at - session.started_at).total_seconds())
+            int((session.completed_at - session.started_at).total_seconds())
 
         # Store session in database
         with Database() as db:

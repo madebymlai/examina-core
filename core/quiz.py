@@ -3,18 +3,18 @@ Quiz Manager for Examina's Phase 5 quiz system.
 Handles quiz creation, question selection, answer evaluation, and SM-2 integration.
 """
 
-import uuid
 import json
 import random
-from datetime import datetime
-from typing import Optional, List, Dict, Any
+import uuid
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from storage.database import Database
+from config import Config
 from core.sm2 import SM2Algorithm
 from core.tutor import Tutor
 from models.llm_manager import LLMManager
-from config import Config
+from storage.database import Database
 
 
 @dataclass
@@ -26,7 +26,6 @@ class QuizQuestion:
     text: str
     difficulty: Optional[str]
     knowledge_item_id: Optional[str]
-    topic_id: Optional[int]
     answered: bool = False
 
 
