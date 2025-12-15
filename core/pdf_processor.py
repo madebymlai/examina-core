@@ -17,13 +17,6 @@ except ImportError:
     PYMUPDF_AVAILABLE = False
 
 try:
-    import pdfplumber
-
-    PDFPLUMBER_AVAILABLE = True
-except ImportError:
-    PDFPLUMBER_AVAILABLE = False
-
-try:
     from PIL import Image
 
     PIL_AVAILABLE = True
@@ -105,11 +98,8 @@ class PDFProcessor:
 
     def __init__(self):
         """Initialize PDF processor."""
-        if not PYMUPDF_AVAILABLE and not PDFPLUMBER_AVAILABLE:
-            raise ImportError(
-                "Neither PyMuPDF nor pdfplumber is available. "
-                "Install at least one: pip install pymupdf or pip install pdfplumber"
-            )
+        if not PYMUPDF_AVAILABLE:
+            raise ImportError("PyMuPDF is required. Install: pip install pymupdf")
 
     def process_pdf(self, pdf_path: Path) -> PDFContent:
         """Process a PDF file and extract all content.
@@ -123,13 +113,7 @@ class PDFProcessor:
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF not found: {pdf_path}")
 
-        # Try PyMuPDF first (more reliable for images), fallback to pdfplumber
-        if PYMUPDF_AVAILABLE:
-            return self._process_with_pymupdf(pdf_path)
-        elif PDFPLUMBER_AVAILABLE:
-            return self._process_with_pdfplumber(pdf_path)
-        else:
-            raise RuntimeError("No PDF processor available")
+        return self._process_with_pymupdf(pdf_path)
 
     def _process_with_pymupdf(self, pdf_path: Path) -> PDFContent:
         """Process PDF using PyMuPDF (fitz).
@@ -184,46 +168,6 @@ class PDFProcessor:
             file_path=pdf_path, total_pages=len(pages), pages=pages, metadata=metadata
         )
 
-    def _process_with_pdfplumber(self, pdf_path: Path) -> PDFContent:
-        """Process PDF using pdfplumber.
-
-        Args:
-            pdf_path: Path to PDF file
-
-        Returns:
-            PDFContent with extracted information
-        """
-        pages = []
-
-        with pdfplumber.open(pdf_path) as pdf:
-            for page_num, page in enumerate(pdf.pages):
-                # Extract text
-                text = page.extract_text() or ""
-
-                # pdfplumber doesn't easily extract images as bytes
-                # We'll leave images empty for now if using pdfplumber
-                images = []
-
-                # Check for LaTeX
-                has_latex, latex_content = self._detect_latex(text)
-
-                pages.append(
-                    PDFPage(
-                        page_number=page_num + 1,
-                        text=text,
-                        images=images,
-                        has_latex=has_latex,
-                        latex_content=latex_content,
-                    )
-                )
-
-            # Metadata
-            metadata = pdf.metadata or {}
-
-        return PDFContent(
-            file_path=pdf_path, total_pages=len(pages), pages=pages, metadata=metadata
-        )
-
     def _detect_latex(self, text: str) -> Tuple[bool, Optional[str]]:
         """Detect LaTeX formulas in text.
 
@@ -272,17 +216,11 @@ class PDFProcessor:
         Returns:
             Extracted text
         """
-        if PYMUPDF_AVAILABLE:
-            doc = fitz.open(pdf_path)
-            page = doc[page_number - 1]
-            text = page.get_text()
-            doc.close()
-            return text
-        elif PDFPLUMBER_AVAILABLE:
-            with pdfplumber.open(pdf_path) as pdf:
-                page = pdf.pages[page_number - 1]
-                return page.extract_text() or ""
-        return ""
+        doc = fitz.open(pdf_path)
+        page = doc[page_number - 1]
+        text = page.get_text()
+        doc.close()
+        return text
 
     def extract_images_from_page(self, pdf_path: Path, page_number: int) -> List[bytes]:
         """Extract images from a specific page.
@@ -294,9 +232,6 @@ class PDFProcessor:
         Returns:
             List of image bytes
         """
-        if not PYMUPDF_AVAILABLE:
-            return []  # pdfplumber doesn't easily extract images
-
         images = []
         doc = fitz.open(pdf_path)
         page = doc[page_number - 1]
@@ -323,15 +258,10 @@ class PDFProcessor:
         Returns:
             Number of pages
         """
-        if PYMUPDF_AVAILABLE:
-            doc = fitz.open(pdf_path)
-            count = len(doc)
-            doc.close()
-            return count
-        elif PDFPLUMBER_AVAILABLE:
-            with pdfplumber.open(pdf_path) as pdf:
-                return len(pdf.pages)
-        return 0
+        doc = fitz.open(pdf_path)
+        count = len(doc)
+        doc.close()
+        return count
 
     def is_scanned_pdf(self, pdf_path: Path, sample_pages: int = 3) -> bool:
         """Detect if PDF is scanned (image-based) or digital (text-based).
@@ -392,10 +322,8 @@ class PDFProcessor:
             # OCR the page image
             text = pytesseract.image_to_string(img, lang=tess_lang)
 
-            # Extract embedded images using pymupdf (if available)
-            images = []
-            if PYMUPDF_AVAILABLE:
-                images = self.extract_images_from_page(pdf_path, page_num)
+            # Extract embedded images using pymupdf
+            images = self.extract_images_from_page(pdf_path, page_num)
 
             # Check for LaTeX patterns in OCR text
             has_latex, latex_content = self._detect_latex(text)
@@ -410,15 +338,10 @@ class PDFProcessor:
                 )
             )
 
-        # Get metadata using pymupdf or pdfplumber
-        metadata = {}
-        if PYMUPDF_AVAILABLE:
-            doc = fitz.open(pdf_path)
-            metadata = doc.metadata or {}
-            doc.close()
-        elif PDFPLUMBER_AVAILABLE:
-            with pdfplumber.open(pdf_path) as pdf:
-                metadata = pdf.metadata or {}
+        # Get metadata using pymupdf
+        doc = fitz.open(pdf_path)
+        metadata = doc.metadata or {}
+        doc.close()
 
         return PDFContent(
             file_path=pdf_path, total_pages=len(pages), pages=pages, metadata=metadata
