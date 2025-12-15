@@ -14,7 +14,7 @@ from config import Config
 from core.sm2 import SM2Algorithm
 from core.tutor import Tutor
 from models.llm_manager import LLMManager
-from storage.database import Database
+
 
 
 @dataclass
@@ -74,6 +74,7 @@ class QuizManager:
         # Generate unique session ID
         session_id = str(uuid.uuid4())
 
+        from storage.database import Database
         with Database() as db:
             # Verify course exists
             course = db.get_course(course_code)
@@ -285,6 +286,7 @@ class QuizManager:
         Returns:
             Dictionary with question data or None if quiz is complete
         """
+        from storage.database import Database
         with Database() as db:
             # Find next unanswered question
             cursor = db.conn.execute(
@@ -351,6 +353,7 @@ class QuizManager:
                 - sm2_update: dict with SM-2 parameters
                 - remaining_questions: int
         """
+        from storage.database import Database
         with Database() as db:
             # Check answer using AI tutor
             tutor_response = self.tutor.check_answer(
@@ -595,6 +598,7 @@ class QuizManager:
         Returns:
             Dictionary with quiz statistics
         """
+        from storage.database import Database
         with Database() as db:
             # Calculate statistics
             stats = db.conn.execute(
@@ -679,6 +683,7 @@ class QuizManager:
         Returns:
             Dictionary with quiz status information
         """
+        from storage.database import Database
         with Database() as db:
             # Get session info
             session = db.conn.execute(

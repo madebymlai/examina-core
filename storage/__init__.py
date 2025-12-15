@@ -1,11 +1,9 @@
 """
-Examina Storage - Database and file management.
+Examina Storage - Database management.
 """
 
 from storage.database import Database
-from storage.file_manager import FileManager
 
 __all__ = [
     "Database",
-    "FileManager",
 ]

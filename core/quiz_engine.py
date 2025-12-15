@@ -10,12 +10,11 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from config import Config
-from core.mastery_aggregator import MasteryAggregator
 from core.proof_tutor import ProofTutor
 from core.sm2 import SM2Algorithm
 from core.tutor import Tutor
 from models.llm_manager import LLMManager
-from storage.database import Database
+
 
 
 @dataclass
@@ -148,6 +147,7 @@ class QuizEngine:
 
         # Create quiz questions
         questions = []
+        from storage.database import Database
         with Database() as db:
             for i, exercise in enumerate(exercises, 1):
                 # Fetch all core loops for this exercise
@@ -180,6 +180,7 @@ class QuizEngine:
         knowledge_item_id = None
 
         if topic and exercises:
+            from storage.database import Database
             with Database() as db:
                 topic_row = db.conn.execute(
                     "SELECT id FROM topics WHERE course_code = ? AND name LIKE ?",
@@ -232,6 +233,7 @@ class QuizEngine:
         Returns:
             List of exercise dictionaries
         """
+        from storage.database import Database
         with Database() as db:
             # Build query using junction table for multi-procedure support
             query = """
@@ -390,6 +392,8 @@ class QuizEngine:
 
         selected = []
 
+        from storage.database import Database
+        from core.mastery_aggregator import MasteryAggregator
         with Database() as db:
             MasteryAggregator(db)
 
@@ -579,6 +583,7 @@ class QuizEngine:
             int((session.completed_at - session.started_at).total_seconds())
 
         # Store session in database
+        from storage.database import Database
         with Database() as db:
             db.conn.execute(
                 """
@@ -640,6 +645,7 @@ class QuizEngine:
             db: Database connection
         """
         # Initialize mastery aggregator for cascade updates
+        from core.mastery_aggregator import MasteryAggregator
         aggregator = MasteryAggregator(db)
         sm2 = SM2Algorithm()
 

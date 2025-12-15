@@ -9,8 +9,8 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
 from models.llm_manager import LLMManager
-from storage.database import Database
 from config import Config
+
 from core.concept_explainer import ConceptExplainer
 from core.study_strategies import StudyStrategyManager
 from core.proof_tutor import ProofTutor
@@ -531,6 +531,7 @@ class Tutor:
                         )
         else:
             # Local SQLite mode
+            from storage.database import Database
             with Database() as db:
                 # Get core loop details
                 knowledge_item = db.conn.execute(
@@ -1077,6 +1078,7 @@ class Tutor:
         Returns:
             TutorResponse with exercise
         """
+        from storage.database import Database
         with Database() as db:
             # Get exercises
             exercises = db.get_exercises_by_course(course_code)
@@ -1142,6 +1144,7 @@ class Tutor:
         Returns:
             TutorResponse with feedback
         """
+        from storage.database import Database
         with Database() as db:
             # Get exercise and core loop
             exercise = db.conn.execute(
@@ -1194,6 +1197,7 @@ class Tutor:
         Returns:
             TutorResponse with new exercise
         """
+        from storage.database import Database
         with Database() as db:
             # Get core loop
             knowledge_item = db.conn.execute(
@@ -1927,6 +1931,7 @@ Generate ONLY the exercise text, not the solution.
 
         if explain_concepts:
             # Extract core loop name for concept explanation
+            from storage.database import Database
             with Database() as db:
                 knowledge_item = db.conn.execute(
                     "SELECT name FROM knowledge_items WHERE id = ?", (knowledge_item_id,)
