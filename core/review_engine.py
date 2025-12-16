@@ -198,7 +198,24 @@ class ReviewEngine:
             learning_approach, self.APPROACH_PROMPTS["conceptual"]
         )
 
-        prompt = f"""You are creating a review exercise for a student preparing for an exam.
+        # R1 requires simpler prompts - no few-shot, direct instructions
+        if self._use_reasoner:
+            prompt = f"""Create a **{approach_prompt.lower()}** exercise about **{knowledge_item_name}**.
+
+Study these real exam examples for style and difficulty:
+{primary_text}
+{avoid_text}
+
+Requirements:
+- Same language as examples
+- Match difficulty exactly
+- Use different values/scenarios
+- 2-5 minutes to solve
+- LaTeX: $...$ inline, $$...$$ display
+
+Return JSON: {{"exercise_text": "...", "expected_answer": "...", "exercise_type": "calculation|short_answer|explanation|scenario"}}"""
+        else:
+            prompt = f"""You are creating a review exercise for a student preparing for an exam.
 
 CONCEPT: {knowledge_item_name}
 TYPE: {approach_prompt}
@@ -289,7 +306,28 @@ Return valid JSON:
         Returns:
             ReviewEvaluation with score, feedback, and correct answer
         """
-        prompt = f"""You are evaluating a student's answer to an exam review exercise.
+        # R1 requires simpler prompts - no few-shot, direct instructions
+        if self._use_reasoner:
+            prompt = f"""Evaluate this answer. Same language as exercise.
+
+**Exercise:** {exercise_text}
+**Expected:** {expected_answer}
+**Student:** {student_answer}
+**Type:** {exercise_type}
+
+Scoring:
+- 90-100%: Correct (minor notation ok)
+- 70-89%: Right approach + answer, small errors
+- 50-69%: Right approach OR right answer (not both)
+- 30-49%: Partial understanding
+- 0-29%: Wrong or blank
+
+Accept equivalent forms (λ=3 same as lambda=3, 1/2=0.5).
+For calculations: no steps = max 70%.
+
+Return JSON: {{"score": 0.0-1.0, "is_correct": true/false, "feedback": "...", "correct_answer": "..."}}"""
+        else:
+            prompt = f"""You are evaluating a student's answer to an exam review exercise.
 
 EXERCISE:
 {exercise_text}
