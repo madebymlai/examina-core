@@ -130,7 +130,7 @@ def regenerate_description(
     if len(descriptions) == 1:
         return descriptions[0]
 
-    prompt = f"""Merge these into one:
+    prompt = f"""Merge these texts into one most representative:
 
 {chr(10).join(f"- {d}" for d in descriptions)}
 
