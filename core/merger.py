@@ -130,19 +130,19 @@ def regenerate_description(
     if len(descriptions) == 1:
         return descriptions[0]
 
-    prompt = f"""Synthesize one unified description from these:
+    prompt = f"""Merge these into one:
 
 {chr(10).join(f"- {d}" for d in descriptions)}
 
-**MATCH the style and length of the inputs.** Return a single unified description.
+**MATCH the style and length of the inputs.**
 
-Return JSON: {{"description": "..."}}"""
+Return JSON: {{"merged": "..."}}"""
 
     try:
         response = llm.generate(prompt=prompt, temperature=0.0, json_mode=True)
         if response and response.text:
             result = json.loads(response.text)
-            desc = result.get("description", descriptions[0])
+            desc = result.get("merged", descriptions[0])
             # Safety truncation if LLM ignores limit
             if len(desc) > 400:
                 desc = desc[:397] + "..."
