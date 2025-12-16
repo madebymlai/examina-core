@@ -107,16 +107,17 @@ def regenerate_description(
     llm: LLMManager,
 ) -> str:
     """
-    Synthesize a unified description from multiple descriptions.
+    Pick the most general description from multiple descriptions.
 
-    Used after merging to create one description that captures all merged items.
+    Uses R1 reasoning to select (not synthesize) the best representative.
+    This prevents description growth over repeated merges.
 
     Args:
         descriptions: List of description strings from merged items
         llm: LLMManager instance
 
     Returns:
-        Unified description (falls back to first on error)
+        Most general description (falls back to longest on error)
     """
     if not descriptions:
         return ""
@@ -130,27 +131,27 @@ def regenerate_description(
     if len(descriptions) == 1:
         return descriptions[0]
 
-    prompt = f"""Merge these texts into one most representative:
+    prompt = f"""Pick the most general text for a chapter subtitle:
 
 {chr(10).join(f"- {d}" for d in descriptions)}
 
-**MATCH the style and length of the inputs.**
-
-Return JSON: {{"merged": "..."}}"""
+Return JSON: {{"subtitle": "..."}}"""
 
     try:
-        response = llm.generate(prompt=prompt, temperature=0.0, json_mode=True)
+        response = llm.generate(
+            prompt=prompt,
+            system="You are a textbook editor.",
+            model="deepseek-reasoner",
+            temperature=0.0,
+            json_mode=True,
+        )
         if response and response.text:
             result = json.loads(response.text)
-            desc = result.get("merged", descriptions[0])
-            # Safety truncation if LLM ignores limit
-            if len(desc) > 400:
-                desc = desc[:397] + "..."
-            return desc
-        return descriptions[0]
+            return result.get("subtitle", max(descriptions, key=len))
+        return max(descriptions, key=len)
     except Exception as e:
-        logger.warning(f"Description regeneration failed: {e}")
-        return descriptions[0]
+        logger.warning(f"Description selection failed: {e}")
+        return max(descriptions, key=len)
 
 
 def group_items_by_skill(
