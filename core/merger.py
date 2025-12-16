@@ -107,9 +107,9 @@ def regenerate_description(
     llm: LLMManager,
 ) -> str:
     """
-    Pick the most general description from multiple descriptions.
+    Pick the most representative description from multiple descriptions.
 
-    Uses R1 reasoning to select (not synthesize) the best representative.
+    Uses R1 reasoning to select (not synthesize) the best quality one.
     This prevents description growth over repeated merges.
 
     Args:
@@ -131,7 +131,7 @@ def regenerate_description(
     if len(descriptions) == 1:
         return descriptions[0]
 
-    prompt = f"""Pick the most general text for a chapter subtitle:
+    prompt = f"""Pick the most representative text for a chapter subtitle:
 
 {chr(10).join(f"- {d}" for d in descriptions)}
 
