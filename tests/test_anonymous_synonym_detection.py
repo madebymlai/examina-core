@@ -611,7 +611,7 @@ def run_all_tests():
     print("ANONYMOUS SYNONYM DETECTION TEST SUITE")
     print("=" * 70)
     print("\nThis test suite validates the test DATA for the anonymous approach.")
-    print("Actual LLM-based testing requires running with detect_synonyms().\n")
+    print("Actual LLM-based testing requires running with merge_items().\n")
 
     test_should_merge_cases()
     test_should_not_merge_cases()
@@ -657,7 +657,7 @@ def test_with_llm(llm_manager=None):
         print("To run: test_with_llm(LLMManager(provider='deepseek'))")
         return
 
-    from core.merger import detect_synonyms
+    from core.merger import merge_items
 
     print("\n" + "=" * 70)
     print("LLM-BASED SYNONYM DETECTION TESTS")
@@ -673,7 +673,7 @@ def test_with_llm(llm_manager=None):
             for i in case["items"]
         ]
 
-        result = detect_synonyms(items, llm_manager)
+        result = merge_items(items, llm_manager)
 
         if len(result) >= case["expected_groups"]:
             print(f"PASS [{case['name']}]: Got {len(result)} group(s)")
@@ -691,7 +691,7 @@ def test_with_llm(llm_manager=None):
             for i in case["items"]
         ]
 
-        result = detect_synonyms(items, llm_manager)
+        result = merge_items(items, llm_manager)
 
         if len(result) == 0:
             print(f"PASS [{case['name']}]: Correctly returned no merges")

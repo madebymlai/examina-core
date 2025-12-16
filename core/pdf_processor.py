@@ -1,7 +1,7 @@
 """
 PDF processing for Examina.
 Extracts text, images, and LaTeX from exam PDFs.
-Supports OCR for math-heavy and scanned PDFs.
+Supports Mathpix and Vision LLM for math-heavy and scanned PDFs.
 """
 
 import re
@@ -30,21 +30,6 @@ try:
 except ImportError:
     PDF2IMAGE_AVAILABLE = False
 
-# Legacy OCR support (deprecated - use Vision LLM instead)
-try:
-    import pytesseract
-
-    OCR_AVAILABLE = True
-except ImportError:
-    OCR_AVAILABLE = False
-
-try:
-    import pycountry
-
-    PYCOUNTRY_AVAILABLE = True
-except ImportError:
-    PYCOUNTRY_AVAILABLE = False
-
 # Vision LLM support
 VISION_AVAILABLE = False
 try:
@@ -62,39 +47,6 @@ try:
         MATHPIX_AVAILABLE = True
 except ImportError:
     pass
-
-
-def get_tesseract_lang(lang_code: str) -> str:
-    """Convert ISO 639-1 (en, it) to Tesseract language code (eng, ita).
-
-    Args:
-        lang_code: ISO 639-1 two-letter language code
-
-    Returns:
-        Tesseract three-letter language code, defaults to 'eng'
-    """
-    if not lang_code:
-        return "eng"
-
-    if PYCOUNTRY_AVAILABLE:
-        try:
-            lang = pycountry.languages.get(alpha_2=lang_code.lower())
-            if lang and hasattr(lang, "alpha_3"):
-                return lang.alpha_3
-        except Exception:
-            pass
-
-    # Fallback for common languages if pycountry fails
-    fallback_map = {
-        "en": "eng",
-        "it": "ita",
-        "fr": "fra",
-        "de": "deu",
-        "es": "spa",
-        "pt": "por",
-        "nl": "nld",
-    }
-    return fallback_map.get(lang_code.lower(), "eng")
 
 
 @dataclass
@@ -309,68 +261,6 @@ class PDFProcessor:
         # If very little text extracted, likely scanned
         avg_chars_per_page = text_chars / pages_to_check if pages_to_check > 0 else 0
         return avg_chars_per_page < 100  # Threshold: less than 100 chars/page = scanned
-
-    def process_pdf_with_ocr(self, pdf_path: Path, lang: str = "en", dpi: int = 300) -> PDFContent:
-        """Process PDF using OCR for better math notation extraction.
-
-        This is the primary pipeline for math-heavy PDFs. Renders pages as
-        images then OCRs them, preserving spatial layout that pymupdf loses.
-
-        Args:
-            pdf_path: Path to PDF file
-            lang: ISO 639-1 language code (en, it, fr, etc.)
-            dpi: Resolution for rendering (300 recommended for OCR)
-
-        Returns:
-            PDFContent with OCR-extracted text
-
-        Raises:
-            ImportError: If OCR dependencies not installed
-            FileNotFoundError: If PDF not found
-        """
-        if not OCR_AVAILABLE:
-            raise ImportError(
-                "OCR dependencies not available. Install: pip install pytesseract pdf2image"
-            )
-
-        if not pdf_path.exists():
-            raise FileNotFoundError(f"PDF not found: {pdf_path}")
-
-        # Convert language code for Tesseract
-        tess_lang = get_tesseract_lang(lang)
-
-        # Render PDF pages as images
-        page_images = convert_from_path(pdf_path, dpi=dpi)
-
-        pages = []
-        for page_num, img in enumerate(page_images, start=1):
-            # OCR the page image
-            text = pytesseract.image_to_string(img, lang=tess_lang)
-
-            # Extract embedded images using pymupdf
-            images = self.extract_images_from_page(pdf_path, page_num)
-
-            # Check for LaTeX patterns in OCR text
-            has_latex, latex_content = self._detect_latex(text)
-
-            pages.append(
-                PDFPage(
-                    page_number=page_num,
-                    text=text,
-                    images=images,
-                    has_latex=has_latex,
-                    latex_content=latex_content,
-                )
-            )
-
-        # Get metadata using pymupdf
-        doc = fitz.open(pdf_path)
-        metadata = doc.metadata or {}
-        doc.close()
-
-        return PDFContent(
-            file_path=pdf_path, total_pages=len(pages), pages=pages, metadata=metadata
-        )
 
     def process_pdf_with_mathpix(self, pdf_path: Path) -> PDFContent:
         """Process PDF using Mathpix OCR for high-quality text + LaTeX extraction.

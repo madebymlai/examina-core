@@ -12,6 +12,8 @@ import json
 from dataclasses import dataclass
 from typing import Optional, Protocol
 
+from core.analyzer import LEARNING_APPROACHES
+
 
 class LLMInterface(Protocol):
     """Protocol for LLM generation."""
@@ -37,6 +39,7 @@ class ExerciseExample:
     solution: Optional[str] = None
     source_type: str = "practice"  # "exam" or "practice"
     image_context: Optional[str] = None  # Vision LLM description of associated diagram
+    exercise_context: Optional[str] = None  # Parent exercise text for sub-exercises
 
 
 @dataclass
@@ -134,13 +137,7 @@ class ReviewEngine:
         quality = score_to_quality(result.score)
     """
 
-    # Learning approach to exercise type mapping
-    APPROACH_PROMPTS = {
-        "procedural": "Generate a CALCULATION exercise. Student must show step-by-step work.",
-        "conceptual": "Generate an EXPLANATION exercise. Student must explain WHY.",
-        "factual": "Generate a RECALL exercise. Student must recall facts/definitions.",
-        "analytical": "Generate a SCENARIO exercise. Student must analyze a situation.",
-    }
+    # Uses LEARNING_APPROACHES from analyzer.py for consistent definitions
 
     def __init__(self, llm: LLMInterface, use_reasoner: bool = False):
         """Initialize with LLM interface.
@@ -161,6 +158,8 @@ class ReviewEngine:
         recent_exercises: Optional[list[str]] = None,
     ) -> GeneratedExercise:
         """Generate a review exercise based on knowledge item and examples.
+
+        Output is in English - caller handles translation to user's language.
 
         Args:
             knowledge_item_name: Name of the knowledge item being reviewed
@@ -194,31 +193,30 @@ class ReviewEngine:
             for i, ex in enumerate(recent_exercises[-5:], 1):
                 avoid_text += f"{i}. {ex[:200]}...\n" if len(ex) > 200 else f"{i}. {ex}\n"
 
-        approach_prompt = self.APPROACH_PROMPTS.get(
-            learning_approach, self.APPROACH_PROMPTS["conceptual"]
+        approach_desc = LEARNING_APPROACHES.get(
+            learning_approach, LEARNING_APPROACHES["conceptual"]
         )
 
-        # R1 requires simpler prompts - no few-shot, direct instructions
+        # R1-0528 supports system prompts
         if self._use_reasoner:
-            prompt = f"""Create a **{approach_prompt.lower()}** exercise about **{knowledge_item_name}**.
+            system = "You are a teacher making a new exercise for a test."
+            prompt = f"""Create a similar exercise about {knowledge_item_name}.
 
-Study these real exam examples for style and difficulty:
+Examples:
 {primary_text}
-{avoid_text}
 
-Requirements:
-- Same language as examples
-- Match difficulty exactly
-- Use different values/scenarios
-- 2-5 minutes to solve
-- LaTeX: $...$ inline, $$...$$ display
+Output in English. Use LaTeX: $...$ inline, $$...$$ display.
 
-Return JSON: {{"exercise_text": "...", "expected_answer": "...", "exercise_type": "calculation|short_answer|explanation|scenario"}}"""
+Return JSON:
+{{
+  "exercise_text": "the exercise",
+  "expected_answer": "brief solution"
+}}"""
         else:
             prompt = f"""You are creating a review exercise for a student preparing for an exam.
 
 CONCEPT: {knowledge_item_name}
-TYPE: {approach_prompt}
+TYPE: {approach_desc}
 
 REAL EXAM/PRACTICE EXAMPLES (study these carefully):
 {primary_text}
@@ -269,9 +267,9 @@ Return valid JSON:
 }}"""
 
         try:
-            # Use reasoner model if enabled (no json_mode support)
+            # Use reasoner model with system prompt
             if self._use_reasoner:
-                response = self._llm.generate(prompt, model=self._reasoner_model)
+                response = self._llm.generate(prompt, model=self._reasoner_model, system=system)
             else:
                 response = self._llm.generate(prompt, json_mode=True)
             # Handle LLMResponse object or string
@@ -293,7 +291,7 @@ Return valid JSON:
         exercise_text: str,
         expected_answer: str,
         student_answer: str,
-        exercise_type: str,
+        exercise_type: str = "explanation",
     ) -> ReviewEvaluation:
         """Evaluate student's answer to a review exercise.
 
@@ -301,31 +299,24 @@ Return valid JSON:
             exercise_text: The exercise question
             expected_answer: Expected solution
             student_answer: Student's submitted answer
-            exercise_type: Type of exercise (calculation, explanation, etc.)
+            exercise_type: Type of exercise (optional, not used by R1)
 
         Returns:
             ReviewEvaluation with score, feedback, and correct answer
         """
-        # R1 requires simpler prompts - no few-shot, direct instructions
+        # R1-0528 supports system prompts
         if self._use_reasoner:
-            prompt = f"""Evaluate this answer. Same language as exercise.
+            system = "You are a teacher correcting your student's work."
+            prompt = f"""Exercise: {exercise_text}
+Expected: {expected_answer}
+Student: {student_answer}
 
-**Exercise:** {exercise_text}
-**Expected:** {expected_answer}
-**Student:** {student_answer}
-**Type:** {exercise_type}
-
-Scoring:
-- 90-100%: Correct (minor notation ok)
-- 70-89%: Right approach + answer, small errors
-- 50-69%: Right approach OR right answer (not both)
-- 30-49%: Partial understanding
-- 0-29%: Wrong or blank
-
-Accept equivalent forms (λ=3 same as lambda=3, 1/2=0.5).
-For calculations: no steps = max 70%.
-
-Return JSON: {{"score": 0.0-1.0, "is_correct": true/false, "feedback": "...", "correct_answer": "..."}}"""
+Return JSON:
+{{
+  "score": 0.0-1.0,
+  "is_correct": true/false,
+  "feedback": "brief feedback"
+}}"""
         else:
             prompt = f"""You are evaluating a student's answer to an exam review exercise.
 
@@ -377,9 +368,9 @@ Return valid JSON:
 }}"""
 
         try:
-            # Use reasoner model if enabled (no json_mode support)
+            # Use reasoner model with system prompt
             if self._use_reasoner:
-                response = self._llm.generate(prompt, model=self._reasoner_model)
+                response = self._llm.generate(prompt, model=self._reasoner_model, system=system)
             else:
                 response = self._llm.generate(prompt, json_mode=True)
             # Handle LLMResponse object or string
@@ -399,7 +390,11 @@ Return valid JSON:
 
         formatted = []
         for i, ex in enumerate(examples, 1):
-            text = f"Example {i}:\n{ex.text}"
+            # Include parent context for sub-exercises
+            if ex.exercise_context:
+                text = f"Example {i}:\nContext: {ex.exercise_context}\nSub-exercise: {ex.text}"
+            else:
+                text = f"Example {i}:\n{ex.text}"
             if ex.image_context:
                 text += f"\n[IMAGE CONTEXT: {ex.image_context}]"
             if ex.solution:

@@ -9,6 +9,8 @@ in PDF files where both appear together. Works for ANY:
 - Structure (numbered, paragraphs, sections)
 
 NO HARDCODING - fully adaptive to content.
+
+TODO: Work in progress - not yet integrated into the main pipeline.
 """
 
 from typing import Dict, Optional, List

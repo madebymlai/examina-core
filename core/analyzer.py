@@ -14,12 +14,12 @@ from models.llm_manager import LLMManager
 logger = logging.getLogger(__name__)
 
 # Learning approaches - how to best teach this knowledge
-LEARNING_APPROACHES = [
-    "procedural",  # Step-by-step problem solving
-    "conceptual",  # Understanding principles and "why"
-    "factual",  # Memorizing facts/terminology
-    "analytical",  # Critical thinking, evaluating evidence
-]
+LEARNING_APPROACHES = {
+    "procedural": "Problem requiring step-by-step solution. Student must show work.",
+    "conceptual": "Question about principles. Student must explain reasoning.",
+    "factual": "Question testing recall. Student must state specific information.",
+    "analytical": "Scenario-based question. Student must analyze and conclude.",
+}
 
 
 @dataclass
@@ -27,7 +27,6 @@ class KnowledgeItemInfo:
     """Unified knowledge item extracted from exercise analysis."""
 
     name: str  # snake_case identifier
-    knowledge_type: Optional[str] = None  # DEPRECATED
     learning_approach: Optional[str] = None  # procedural, conceptual, factual, analytical
 
 
@@ -123,7 +122,6 @@ class ExerciseAnalyzer:
             knowledge_items.append(
                 KnowledgeItemInfo(
                     name=item_data.get("name", "unknown"),
-                    knowledge_type=None,
                     learning_approach=item_data.get("learning_approach"),
                 )
             )
@@ -175,7 +173,10 @@ EXERCISE SUMMARY:
 This summarizes the exercise. Use it to understand the context, but name the knowledge item based on the core skill being tested.
 """
 
-        learning_approaches_str = "|".join(LEARNING_APPROACHES)
+        learning_approaches_str = "|".join(LEARNING_APPROACHES.keys())
+        learning_approaches_desc = "\n".join(
+            f"- **{k}** = {v}" for k, v in LEARNING_APPROACHES.items()
+        )
 
         base_prompt += f"""
 IMPORTANT: {self._language_instruction("Respond")} All names must be in {self._language_name()} language.
@@ -200,10 +201,7 @@ Respond in JSON format:
 - If **multiple concepts**, pick the **primary one**
 
 **LEARNING APPROACH**:
-- **procedural** = APPLY steps/calculate/solve/design
-- **conceptual** = EXPLAIN/compare/reason why
-- **factual** = RECALL facts/definitions/formulas
-- **analytical** = ANALYZE/evaluate/critique/prove
+{learning_approaches_desc}
 
 **CONTEXT EXCLUSION**:
 - Extract **ONLY** course concepts, **NOT** word problem scenarios

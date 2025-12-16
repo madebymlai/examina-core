@@ -9,6 +9,7 @@ import json
 import logging
 
 from models.llm_manager import LLMManager
+from core.analyzer import LEARNING_APPROACHES
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +134,7 @@ def regenerate_description(
 
 {chr(10).join(f"- {d}" for d in descriptions)}
 
-**Be concise.** Return the best unified description.
+**MATCH the style and length of the inputs.** Return a single unified description.
 
 Return JSON: {{"description": "..."}}"""
 
@@ -141,7 +142,11 @@ Return JSON: {{"description": "..."}}"""
         response = llm.generate(prompt=prompt, temperature=0.0, json_mode=True)
         if response and response.text:
             result = json.loads(response.text)
-            return result.get("description", descriptions[0])
+            desc = result.get("description", descriptions[0])
+            # Safety truncation if LLM ignores limit
+            if len(desc) > 400:
+                desc = desc[:397] + "..."
+            return desc
         return descriptions[0]
     except Exception as e:
         logger.warning(f"Description regeneration failed: {e}")
@@ -321,16 +326,16 @@ def get_learning_approach(
     if not exercises:
         return None
 
+    approaches_desc = "\n".join(f"- {k} = {v}" for k, v in LEARNING_APPROACHES.items())
+    approaches_keys = "|".join(LEARNING_APPROACHES.keys())
+
     prompt = f"""Based on these exercises, pick the most appropriate learning approach.
 
 Exercises:
 {chr(10).join(f'- "{ex}"' for ex in exercises[:6])}
 
-Options: procedural, conceptual, factual, analytical
-- procedural = exercise asks to APPLY steps/calculate/solve
-- conceptual = exercise asks to EXPLAIN/compare/reason why
-- factual = exercise asks to RECALL specific facts/definitions
-- analytical = exercise asks to ANALYZE/evaluate/critique
+Options: {approaches_keys}
+{approaches_desc}
 
 Return JSON: {{"learning_approach": "procedural"}}"""
 
@@ -353,16 +358,16 @@ Return JSON: {{"learning_approach": "procedural"}}"""
 def merge_items(
     items: list[tuple[str, str]] | list[dict],
     llm: LLMManager,
-) -> list[tuple[str, str, list[str], str | None]]:
+) -> list[tuple[str, str, list[str], str | None, str | None]]:
     """
     Merge equivalent knowledge items by grouping by skill and picking canonical names.
 
     Args:
-        items: List of dicts with keys: name, type, exercises, learning_approach
+        items: List of dicts with keys: name, type, exercises, learning_approach, description
         llm: LLMManager instance
 
     Returns:
-        List of (canonical_name, type, member_names, learning_approach) tuples
+        List of (canonical_name, type, member_names, learning_approach, description) tuples
     """
     if len(items) < 2:
         return []
@@ -377,6 +382,7 @@ def merge_items(
                     "type": item[1],
                     "exercises": [],
                     "learning_approach": None,
+                    "description": None,
                 }
             )
         elif isinstance(item, dict):
@@ -386,6 +392,7 @@ def merge_items(
                     "type": item.get("type", "key_concept"),
                     "exercises": item.get("exercises", []),
                     "learning_approach": item.get("learning_approach"),
+                    "description": item.get("description"),
                 }
             )
 
@@ -396,7 +403,7 @@ def merge_items(
         return []
 
     # Process each group
-    all_results: list[tuple[str, str, list[str], str | None]] = []
+    all_results: list[tuple[str, str, list[str], str | None, str | None]] = []
 
     for group_items in groups:
         group_names = [item["name"] for item in group_items]
@@ -413,13 +420,13 @@ def merge_items(
         # Get type from first item
         item_type = group_items[0].get("type", "key_concept")
 
-        all_results.append((canonical_name, item_type, group_names, learning_approach))
+        # Regenerate unified description from merged items
+        group_descriptions = [item.get("description") for item in group_items if item.get("description")]
+        description = regenerate_description(group_descriptions, llm) if group_descriptions else None
+
+        all_results.append((canonical_name, item_type, group_names, learning_approach, description))
         logger.info(
             f"Skill group: {group_names} -> canonical='{canonical_name}', approach={learning_approach}"
         )
 
     return all_results
-
-
-# Deprecated alias for backward compatibility
-detect_synonyms = merge_items

@@ -488,7 +488,6 @@ Prove:
 """
     pattern = MarkerPattern(
         exercise_pattern=r"Problem\s+(\d+)",
-        sub_patterns=[r"\(([ivx]+)\)"],
         solution_pattern=None,
     )
 

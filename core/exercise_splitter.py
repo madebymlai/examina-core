@@ -190,20 +190,12 @@ class MarkerPattern:
     """Pattern for exercise markers detected by LLM.
 
     LLM returns actual regex patterns for language-agnostic detection.
-
-    Note: sub_patterns is no longer returned from pattern detection (Call 1).
-    Per-exercise sub_patterns are now determined in Call 3 after parent boundaries
+    Sub-patterns are determined per-exercise in Call 3 after parent boundaries
     are known, to avoid false positives from inline conditions like "i) X or ii) Y".
     """
 
     exercise_pattern: str  # Regex for exercise markers (e.g., "Esercizio\\s+(\\d+)")
-    sub_patterns: Optional[List[str]] = None  # DEPRECATED: Now determined per-exercise in Call 3
     solution_pattern: Optional[str] = None  # Keyword or regex for solutions (e.g., "Soluzione")
-
-    @property
-    def sub_pattern(self) -> Optional[str]:
-        """Backward compatibility: return first sub_pattern if any."""
-        return self.sub_patterns[0] if self.sub_patterns else None
 
 
 @dataclass
