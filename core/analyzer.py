@@ -258,7 +258,7 @@ def generate_item_description(
 
     system = "You are a textbook editor."
 
-    prompt = f"""Describe in English the skill/concept being tested (start with a verb, no colons):
+    prompt = f"""Describe in English the skill/concept being tested (**start with a verb**, no colons):
 
 {chr(10).join(f"- {t}" for t in exercises_text)}
 
