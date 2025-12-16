@@ -52,53 +52,34 @@ class Config:
     CACHE_PATH = DATA_DIR / "cache"
 
     # LLM Settings
-    LLM_PROVIDER = os.getenv("EXAMINA_LLM_PROVIDER", "anthropic")
+    LLM_PROVIDER = os.getenv("EXAMINA_LLM_PROVIDER", "deepseek")
 
-    # Provider Routing Settings (NEW - Provider Routing Architecture)
-    # Default provider profile to use when --profile flag not specified
-    PROVIDER_PROFILE = os.getenv("EXAMINA_PROVIDER_PROFILE", "free")  # Options: free, pro, local
-    PROVIDER_PROFILES_PATH = (
-        None  # Will be set to BASE_DIR / "config" / "provider_profiles.yaml" below
-    )
-
-    # Ollama Settings (only used if provider=ollama)
+    # Ollama Settings (local fallback)
     LLM_PRIMARY_MODEL = os.getenv("EXAMINA_PRIMARY_MODEL", "qwen2.5:14b")
     LLM_FAST_MODEL = os.getenv("EXAMINA_FAST_MODEL", "llama3.1:8b")
     LLM_EMBED_MODEL = os.getenv("EXAMINA_EMBED_MODEL", "nomic-embed-text")
     OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
-    # API Keys
-    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+    # API Keys (primary)
     DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
     OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+
+    # API Keys (optional - for backward compatibility)
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
     # Mathpix OCR Settings
     MATHPIX_APP_ID = os.getenv("MATHPIX_APP_ID")
     MATHPIX_APP_KEY = os.getenv("MATHPIX_APP_KEY")
 
-    # OpenRouter Settings
-    OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat")
+    # DeepSeek Settings (direct API - text tasks)
+    DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+    DEEPSEEK_REASONER_MODEL = os.getenv("DEEPSEEK_REASONER_MODEL", "deepseek-reasoner")
+
+    # OpenRouter Settings (vision + image generation)
     OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "google/gemini-2.0-flash-001")
     OPENROUTER_IMAGE_MODEL = os.getenv("OPENROUTER_IMAGE_MODEL", "black-forest-labs/flux-2-pro")
-
-    # Anthropic Settings
-    ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")  # Sonnet 4.5
-
-    # Groq Settings
-    GROQ_MODEL = os.getenv(
-        "GROQ_MODEL", "llama-3.3-70b-versatile"
-    )  # Best rate limits on Groq free tier
-
-    # DeepSeek Settings
-    DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")  # DeepSeek v3 (671B MoE)
-    DEEPSEEK_REASONER_MODEL = os.getenv(
-        "DEEPSEEK_REASONER_MODEL", "deepseek-reasoner"
-    )  # R1 with CoT
-    DEEPSEEK_VISION_MODEL = os.getenv(
-        "DEEPSEEK_VISION_MODEL", "deepseek-chat"
-    )  # Vision model (supports images)
 
     # Processing Settings
     PDF_MAX_SIZE_MB = 50
@@ -198,22 +179,7 @@ class Config:
 
     # Rate Limiting Settings
     PROVIDER_RATE_LIMITS = {
-        "anthropic": {
-            "requests_per_minute": int(os.getenv("ANTHROPIC_RPM", "50")),
-            "tokens_per_minute": int(os.getenv("ANTHROPIC_TPM", "40000")),
-            "burst_size": 5,
-        },
-        "groq": {
-            "requests_per_minute": int(os.getenv("GROQ_RPM", "30")),
-            "tokens_per_minute": int(os.getenv("GROQ_TPM", "6000")),
-            "burst_size": 3,
-        },
         "ollama": {"requests_per_minute": None, "tokens_per_minute": None, "burst_size": 1},
-        "openai": {
-            "requests_per_minute": int(os.getenv("OPENAI_RPM", "60")),
-            "tokens_per_minute": int(os.getenv("OPENAI_TPM", "90000")),
-            "burst_size": 5,
-        },
         "deepseek": {"requests_per_minute": None, "tokens_per_minute": None, "burst_size": 1},
         "openrouter": {"requests_per_minute": None, "tokens_per_minute": None, "burst_size": 1},
     }
