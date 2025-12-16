@@ -53,8 +53,6 @@ class Config:
 
     # LLM Settings
     LLM_PROVIDER = os.getenv("EXAMINA_LLM_PROVIDER", "deepseek")
-    PROVIDER_PROFILE = os.getenv("EXAMINA_PROVIDER_PROFILE", "free")
-    PROVIDER_PROFILES_PATH = None  # Set in ensure_dirs()
 
     # Ollama Settings (local fallback)
     LLM_PRIMARY_MODEL = os.getenv("EXAMINA_PRIMARY_MODEL", "qwen2.5:14b")
@@ -195,14 +193,6 @@ class Config:
         cls.IMAGES_PATH.mkdir(exist_ok=True, parents=True)
         cls.CACHE_PATH.mkdir(exist_ok=True, parents=True)
         cls.STUDY_STRATEGY_CACHE_DIR.mkdir(exist_ok=True, parents=True)
-
-        # Ensure config directory exists for provider profiles
-        config_dir = cls.BASE_DIR / "config"
-        config_dir.mkdir(exist_ok=True, parents=True)
-
-        # Set provider profiles path if not already set
-        if cls.PROVIDER_PROFILES_PATH is None:
-            cls.PROVIDER_PROFILES_PATH = config_dir / "provider_profiles.yaml"
 
     @classmethod
     def get_course_pdf_dir(cls, course_code):

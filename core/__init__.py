@@ -9,8 +9,6 @@ Main components:
 
 from core.analyzer import ExerciseAnalyzer, AnalysisResult
 from core.tutor import Tutor
-from core.provider_router import ProviderRouter
-from core.task_types import TaskType
 from core.answer_evaluator import RecallEvaluationResult
 from core.note_splitter import NoteSplitter, NoteSection
 from core.review_engine import (
@@ -26,8 +24,6 @@ __all__ = [
     "ExerciseAnalyzer",
     "AnalysisResult",
     "Tutor",
-    "ProviderRouter",
-    "TaskType",
     "RecallEvaluationResult",
     "NoteSplitter",
     "NoteSection",
