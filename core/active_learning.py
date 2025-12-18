@@ -7,6 +7,7 @@ Uses Query by Committee (QBC) for uncertainty estimation.
 
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
@@ -176,6 +177,49 @@ class ActiveClassifier:
             logger.info(f"ActiveClassifier loaded {len(X)} training samples")
 
         self.stats.training_samples = len(self._training_records)
+
+    def export_training_data(self) -> dict:
+        """
+        Export training data to JSON-serializable dict.
+
+        Returns:
+            Dict with version, timestamp, sample count, and training data
+        """
+        return {
+            "version": 1,
+            "exported_at": datetime.utcnow().isoformat(),
+            "samples": len(self._training_records),
+            "data": [
+                {"features": r.features, "label": r.label}
+                for r in self._training_records
+            ],
+        }
+
+    def import_training_data(self, data: dict) -> int:
+        """
+        Import training data from dict (e.g., loaded from JSON file).
+
+        Args:
+            data: Dict with 'version', 'data' keys
+
+        Returns:
+            Number of samples loaded
+
+        Raises:
+            ValueError: If version is unsupported
+        """
+        version = data.get("version", 0)
+        if version != 1:
+            raise ValueError(f"Unsupported training data version: {version}")
+
+        records = data.get("data", [])
+        self.load_training_data(records)
+
+        logger.info(
+            f"Imported {len(records)} training samples "
+            f"(exported at {data.get('exported_at', 'unknown')})"
+        )
+        return len(records)
 
     def get_new_training_records(self) -> list[TrainingRecord]:
         """Get training records added this session (for saving to DB)."""

@@ -56,6 +56,7 @@ except ImportError:
 
 TEST_DATA_PATH = Path("/home/laimk/git/examina-cloud/test-data")
 TEST_RESULTS_PATH = Path(__file__).parent.parent / "test-results"
+TRAINING_CACHE_PATH = Path(__file__).parent.parent / ".examina" / "training_cache.json"
 
 COURSES = {
     "ADE-EXAMS": "Architettura degli Elaboratori",
@@ -187,8 +188,9 @@ class PipelineTester:
         verbose: bool = False,
         quiet: bool = False,
         debug: bool = False,
-        use_active_learning: bool = False,
+        use_active_learning: bool = True,
         show_features: bool = False,
+        training_path: str | None = None,
     ):
         self.lang = lang
         self.verbose = verbose
@@ -196,6 +198,7 @@ class PipelineTester:
         self.debug = debug
         self.use_active_learning = use_active_learning
         self.show_features = show_features
+        self.training_path = training_path
         self.processor = PDFProcessor()
         self.llm = None
         self.splitter = None
@@ -210,12 +213,25 @@ class PipelineTester:
             self.splitter = ExerciseSplitter()
 
     def _init_active_learning(self):
-        """Lazy init active learning classifier."""
+        """Lazy init active learning classifier with optional warm start."""
         if self.use_active_learning and ACTIVE_LEARNING_AVAILABLE:
             if self.active_classifier is None:
                 self.active_classifier = ActiveClassifier()
-                if not self.quiet:
-                    print(f"  {cyan('Active Learning')}: Enabled (cold start)")
+
+                # Warm start from training data
+                if self.training_path and Path(self.training_path).exists():
+                    try:
+                        with open(self.training_path) as f:
+                            data = json.load(f)
+                        samples = self.active_classifier.import_training_data(data)
+                        if not self.quiet:
+                            print(f"  {cyan('Active Learning')}: Warm start ({samples} samples)")
+                    except Exception as e:
+                        if not self.quiet:
+                            print(f"  {yellow('Warning')}: Failed to load training: {e}")
+                            print(f"  {cyan('Active Learning')}: Cold start")
+                elif not self.quiet:
+                    print(f"  {cyan('Active Learning')}: Cold start")
 
     def _init_analyzer(self):
         """Lazy init analyzer."""
@@ -634,13 +650,21 @@ class TestRunner:
 
     def __init__(self, args: argparse.Namespace):
         self.args = args
+
+        # Determine training path (explicit or auto from cache)
+        training_path = getattr(args, 'load_training', None)
+        if not training_path and getattr(args, 'persist', False):
+            if TRAINING_CACHE_PATH.exists():
+                training_path = str(TRAINING_CACHE_PATH)
+
         self.tester = PipelineTester(
             lang=args.lang,
             verbose=args.verbose,
             quiet=args.quiet,
             debug=args.debug,
-            use_active_learning=getattr(args, 'with_active_learning', False),
+            use_active_learning=getattr(args, 'with_active_learning', True),
             show_features=getattr(args, 'show_features', False),
+            training_path=training_path,
         )
         self.summary = TestSummary()
         self._interrupted = False
@@ -757,10 +781,136 @@ class TestRunner:
         if self.args.save:
             self._save_results()
 
+        # Generate HTML report if requested
+        if getattr(self.args, 'html', None):
+            self._generate_html_report(self.args.html)
+
+        # Save training data if requested or persist is enabled
+        self._save_training_data()
+
         # Save failed list for --rerun-failed
         self._save_failed_list()
 
         return 0 if self.summary.failed == 0 and self.summary.errors == 0 else 1
+
+    def run_benchmark(self) -> int:
+        """Run benchmark comparing with/without active learning."""
+        print(bold("=== BENCHMARK MODE ===\n"))
+
+        pdfs = self._collect_pdfs()
+        if not pdfs:
+            print(red("No PDFs found!"))
+            return 1
+
+        print(f"Testing {len(pdfs)} PDFs\n")
+
+        # Run 1: Without active learning
+        print(bold("Run 1: Without Active Learning"))
+        print("=" * 40)
+        self.tester.use_active_learning = False
+        self.tester.active_classifier = None
+
+        start1 = time.time()
+        results_without = self._run_all_pdfs(pdfs)
+        time_without = time.time() - start1
+        llm_calls_without = self._total_llm_misses
+
+        # Reset for run 2
+        self._reset_benchmark_stats()
+
+        # Run 2: With active learning
+        print(f"\n{bold('Run 2: With Active Learning')}")
+        print("=" * 40)
+        self.tester.use_active_learning = True
+
+        start2 = time.time()
+        results_with = self._run_all_pdfs(pdfs)
+        time_with = time.time() - start2
+        llm_calls_with = self._total_al_llm_calls
+
+        # Compare results
+        self._print_benchmark_comparison(
+            results_without, results_with,
+            time_without, time_with,
+            llm_calls_without, llm_calls_with,
+        )
+
+        return 0
+
+    def _run_all_pdfs(self, pdfs: list) -> list:
+        """Run all PDFs and return results."""
+        results = []
+        for i, (pdf_path, course_folder) in enumerate(pdfs):
+            course_name = self.tester._get_course_name(course_folder)
+
+            if not self.args.quiet:
+                print(f"  [{i+1}/{len(pdfs)}] {pdf_path.name}")
+
+            result = self.tester.test_full(pdf_path, course_name)
+            results.append(result)
+            self._record_result(result)
+
+        return results
+
+    def _reset_benchmark_stats(self):
+        """Reset stats between benchmark runs."""
+        self._total_llm_hits = 0
+        self._total_llm_misses = 0
+        self._total_al_llm_calls = 0
+        self._total_al_predictions = 0
+        self._total_al_transitive = 0
+        self._total_al_training = 0
+        self.summary = TestSummary()
+        if self.tester.llm:
+            self.tester.llm.reset_cache_stats()
+
+    def _print_benchmark_comparison(
+        self,
+        results_without, results_with,
+        time_without, time_with,
+        llm_without, llm_with,
+    ):
+        """Print benchmark comparison."""
+        print(f"\n{bold('=== BENCHMARK RESULTS ===')}\n")
+
+        # Time comparison
+        time_diff = time_without - time_with
+        time_pct = (time_diff / time_without * 100) if time_without > 0 else 0
+        print(f"Time:")
+        print(f"  Without AL: {time_without:.1f}s")
+        print(f"  With AL:    {time_with:.1f}s")
+        if time_diff > 0:
+            print(f"  Speedup:    {green(f'{time_pct:.0f}%')} ({time_diff:.1f}s saved)")
+        else:
+            print(f"  Difference: {yellow(f'{time_diff:.1f}s')}")
+
+        # LLM calls comparison
+        if llm_without > 0:
+            llm_diff = llm_without - llm_with
+            llm_pct = (llm_diff / llm_without * 100) if llm_without > 0 else 0
+            print(f"\nLLM Calls (classification):")
+            print(f"  Without AL: {llm_without}")
+            print(f"  With AL:    {llm_with}")
+            print(f"  Reduction:  {green(f'{llm_pct:.0f}%')} ({llm_diff} calls saved)")
+
+        # Merge quality comparison
+        merges_without = sum(len(r.skill_groups) for r in results_without)
+        merges_with = sum(len(r.skill_groups) for r in results_with)
+        print(f"\nMerge Groups Found:")
+        print(f"  Without AL: {merges_without}")
+        print(f"  With AL:    {merges_with}")
+        if merges_without != merges_with:
+            diff = merges_with - merges_without
+            print(f"  Difference: {yellow(f'{diff:+d}')}")
+        else:
+            print(f"  Difference: {green('None (identical)')}")
+
+        # KI counts
+        kis_without = sum(len(r.knowledge_items) for r in results_without)
+        kis_with = sum(len(r.knowledge_items) for r in results_with)
+        print(f"\nKnowledge Items:")
+        print(f"  Without AL: {kis_without}")
+        print(f"  With AL:    {kis_with}")
 
     def _run_cross_batch_merge(self, course_folder: str):
         """Run cross-batch merge for accumulated items in a course (parallel mode)."""
@@ -1306,6 +1456,224 @@ class TestRunner:
 
         print(f"\nResults saved to: {filepath}")
 
+    def _save_training_data(self):
+        """Save training data if requested or persist is enabled."""
+        if not self.tester.active_classifier:
+            return
+
+        # Determine output path
+        save_path = None
+        if getattr(self.args, 'save_training', None):
+            save_path = Path(self.args.save_training)
+        elif getattr(self.args, 'persist', False):
+            save_path = TRAINING_CACHE_PATH
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if save_path:
+            try:
+                data = self.tester.active_classifier.export_training_data()
+                with open(save_path, 'w') as f:
+                    json.dump(data, f, indent=2)
+                if not self.args.quiet:
+                    print(f"Training data saved to {save_path} ({data['samples']} samples)")
+            except Exception as e:
+                print(f"{yellow('Warning')}: Failed to save training data: {e}")
+
+    def _generate_html_report(self, output_path: str):
+        """Generate HTML report with visual elements."""
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Pipeline Test Report - {timestamp}</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+               margin: 40px; background: #f5f5f5; }}
+        .container {{ max-width: 1200px; margin: 0 auto; background: white;
+                     padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+        h1 {{ color: #333; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px; }}
+        h2 {{ color: #555; margin-top: 30px; }}
+        .summary {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin: 20px 0; }}
+        .stat {{ background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; }}
+        .stat-value {{ font-size: 32px; font-weight: bold; color: #333; }}
+        .stat-label {{ color: #666; margin-top: 5px; }}
+        .pass {{ color: #28a745; }}
+        .fail {{ color: #dc3545; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
+        th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #e0e0e0; }}
+        th {{ background: #f8f9fa; font-weight: 600; }}
+        tr:hover {{ background: #f8f9fa; }}
+        .sim-high {{ background: #28a745; color: white; }}
+        .sim-med {{ background: #ffc107; }}
+        .sim-low {{ background: #f8f9fa; }}
+        .collapsible {{ cursor: pointer; padding: 10px; background: #f8f9fa;
+                       border-radius: 4px; margin: 5px 0; }}
+        .collapsible:hover {{ background: #e9ecef; }}
+        .content {{ display: none; padding: 10px; background: #fff; border: 1px solid #e0e0e0; }}
+        .content.show {{ display: block; }}
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Pipeline Test Report</h1>
+    <p>Generated: {timestamp}</p>
+
+    {self._html_summary_section()}
+    {self._html_active_learning_section()}
+    {self._html_results_section()}
+    {self._html_similarity_section()}
+
+</div>
+<script>
+document.querySelectorAll('.collapsible').forEach(el => {{
+    el.addEventListener('click', () => {{
+        el.nextElementSibling.classList.toggle('show');
+    }});
+}});
+</script>
+</body>
+</html>"""
+
+        Path(output_path).write_text(html)
+        print(f"\nHTML report saved to: {output_path}")
+
+    def _html_summary_section(self) -> str:
+        """Generate summary stats section."""
+        return f"""
+    <div class="summary">
+        <div class="stat">
+            <div class="stat-value">{self.summary.total}</div>
+            <div class="stat-label">PDFs Tested</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value pass">{self.summary.passed}</div>
+            <div class="stat-label">Passed</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value fail">{self.summary.failed + self.summary.errors}</div>
+            <div class="stat-label">Failed</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">{self.summary.duration:.1f}s</div>
+            <div class="stat-label">Duration</div>
+        </div>
+    </div>"""
+
+    def _html_active_learning_section(self) -> str:
+        """Generate active learning stats section."""
+        total = self._total_al_llm_calls + self._total_al_predictions + self._total_al_transitive
+        if total == 0:
+            return ""
+
+        reduction = 1 - (self._total_al_llm_calls / total) if total > 0 else 0
+        return f"""
+    <h2>Active Learning Performance</h2>
+    <div class="summary">
+        <div class="stat">
+            <div class="stat-value">{total}</div>
+            <div class="stat-label">Classifications</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">{self._total_al_llm_calls}</div>
+            <div class="stat-label">LLM Calls</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">{self._total_al_predictions}</div>
+            <div class="stat-label">ML Predictions</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value pass">{reduction:.0%}</div>
+            <div class="stat-label">LLM Reduction</div>
+        </div>
+    </div>"""
+
+    def _html_results_section(self) -> str:
+        """Generate per-PDF results section."""
+        rows = []
+        for r in self.summary.results:
+            pdf_name = Path(r.pdf_path).name
+            status_class = "pass" if r.status == "PASS" else "fail"
+            n_kis = len(r.knowledge_items) if r.knowledge_items else 0
+            n_groups = len(r.skill_groups) if r.skill_groups else 0
+
+            rows.append(f"""
+        <tr>
+            <td>{pdf_name}</td>
+            <td class="{status_class}">{r.status}</td>
+            <td>{r.pages}</td>
+            <td>{r.exercises}</td>
+            <td>{n_kis}</td>
+            <td>{n_groups}</td>
+            <td>{r.duration:.1f}s</td>
+        </tr>""")
+
+        return f"""
+    <h2>Results by PDF</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>PDF</th>
+                <th>Status</th>
+                <th>Pages</th>
+                <th>Exercises</th>
+                <th>KIs</th>
+                <th>Merged</th>
+                <th>Time</th>
+            </tr>
+        </thead>
+        <tbody>
+            {''.join(rows)}
+        </tbody>
+    </table>"""
+
+    def _html_similarity_section(self) -> str:
+        """Generate similarity table section."""
+        # Collect all similarity pairs across all results
+        all_pairs = []
+        for r in self.summary.results:
+            if r.feature_similarities:
+                for pair in r.feature_similarities:
+                    all_pairs.append({
+                        "pdf": Path(r.pdf_path).name,
+                        **pair
+                    })
+
+        if not all_pairs:
+            return ""
+
+        # Sort by similarity
+        all_pairs.sort(key=lambda x: x["similarity"], reverse=True)
+
+        rows = []
+        for pair in all_pairs[:20]:  # Top 20
+            sim = pair["similarity"]
+            sim_class = "sim-high" if sim >= 0.75 else "sim-med" if sim >= 0.6 else "sim-low"
+            rows.append(f"""
+        <tr>
+            <td>{pair['pdf']}</td>
+            <td>{pair['item_a'][:40]}</td>
+            <td>{pair['item_b'][:40]}</td>
+            <td class="{sim_class}" style="font-weight:bold">{sim:.2f}</td>
+        </tr>""")
+
+        return f"""
+    <h2>Top Embedding Similarities</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>PDF</th>
+                <th>Item A</th>
+                <th>Item B</th>
+                <th>Similarity</th>
+            </tr>
+        </thead>
+        <tbody>
+            {''.join(rows)}
+        </tbody>
+    </table>"""
+
     def _format_results_text(self, timestamp: str, mode: str) -> list:
         """Format results as text lines (shared by _save_results and _save_recent)."""
         lines = [
@@ -1585,10 +1953,10 @@ Processing Modes (--full with multiple PDFs):
     depth_group = parser.add_mutually_exclusive_group()
     depth_group.add_argument("--parse", action="store_true", help="Test parse only (stage 1)")
     depth_group.add_argument(
-        "--split", action="store_true", help="Test parse + split (stages 1-2, default)"
+        "--split", action="store_true", help="Test parse + split (stages 1-2)"
     )
     depth_group.add_argument(
-        "--analyze", action="store_true", help="Test parse + split + analyze (stages 1-3)"
+        "--analyze", action="store_true", help="Test parse + split + analyze (stages 1-3, default)"
     )
     depth_group.add_argument(
         "--full", action="store_true", help="Full pipeline + skill grouping (shows merges)"
@@ -1612,11 +1980,18 @@ Processing Modes (--full with multiple PDFs):
         help="Independent PDFs, no cross-batch merge (internal merge only)",
     )
 
-    # Active learning
-    parser.add_argument(
+    # Active learning (ON by default)
+    al_group = parser.add_mutually_exclusive_group()
+    al_group.add_argument(
         "--with-active-learning",
         action="store_true",
-        help="Use active learning classifier (shows ML vs LLM stats)",
+        default=True,
+        help="Use active learning classifier (default: ON)",
+    )
+    al_group.add_argument(
+        "--no-active-learning",
+        action="store_true",
+        help="Disable active learning (use pure LLM)",
     )
     parser.add_argument(
         "--show-features",
@@ -1624,9 +1999,42 @@ Processing Modes (--full with multiple PDFs):
         help="Show embedding similarity and feature scores",
     )
 
+    # Training data persistence (ON by default)
+    parser.add_argument(
+        "--load-training",
+        metavar="PATH",
+        help="Load training data from JSON file (warm start)",
+    )
+    parser.add_argument(
+        "--save-training",
+        metavar="PATH",
+        help="Save training data to JSON file after run",
+    )
+    persist_group = parser.add_mutually_exclusive_group()
+    persist_group.add_argument(
+        "--persist",
+        action="store_true",
+        default=True,
+        help="Auto-save/load training from cache (default: ON)",
+    )
+    persist_group.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Disable training persistence (cold start each run)",
+    )
+
+    # Benchmark mode
+    parser.add_argument(
+        "--benchmark",
+        action="store_true",
+        help="Run twice (with/without AL) and compare performance",
+    )
+
     # Output options
-    parser.add_argument("--save", action="store_true", help="Save results to test-results/")
-    parser.add_argument("--json", action="store_true", help="Output as JSON (with --save)")
+    parser.add_argument("--save", action="store_true", help="Save results to test-results/ (HTML by default)")
+    parser.add_argument("--html", metavar="PATH", help="Generate HTML report at specified path")
+    parser.add_argument("--json", action="store_true", help="Output as JSON instead of HTML (with --save)")
+    parser.add_argument("--txt", action="store_true", help="Output as plain text instead of HTML (with --save)")
     parser.add_argument("--failures-only", action="store_true", help="Show only failed tests")
     parser.add_argument("--timing", action="store_true", help="Show timing per PDF")
     parser.add_argument("--lang", default="en", help="Language for analysis (default: en)")
@@ -1645,6 +2053,18 @@ Processing Modes (--full with multiple PDFs):
     if not any([args.smoke, args.course, args.all, args.pdf, args.golden, args.rerun_failed]):
         args.all = True
 
+    # Default to --analyze if no depth specified (changed from --split)
+    if not any([args.parse, args.split, args.analyze, args.full]):
+        args.analyze = True
+
+    # Handle active learning toggle
+    if args.no_active_learning:
+        args.with_active_learning = False
+
+    # Handle persist toggle
+    if args.no_persist:
+        args.persist = False
+
     # Disable colors if requested or not a TTY
     if args.no_color or not sys.stdout.isatty():
         Colors.disable()
@@ -1658,7 +2078,9 @@ def main():
 
     runner = TestRunner(args)
 
-    if args.golden:
+    if getattr(args, 'benchmark', False):
+        exit_code = runner.run_benchmark()
+    elif args.golden:
         exit_code = runner.run_golden()
     else:
         exit_code = runner.run()
