@@ -42,6 +42,14 @@ from core.merger import classify_items, get_canonical_name
 from core.pdf_processor import PDFProcessor
 from models.llm_manager import LLMManager
 
+# Optional: Active learning imports (may not be installed)
+try:
+    from core.active_learning import ActiveClassifier
+    from core.features import extract_features, compute_embedding, cosine_similarity
+    ACTIVE_LEARNING_AVAILABLE = True
+except ImportError:
+    ACTIVE_LEARNING_AVAILABLE = False
+
 # =============================================================================
 # Configuration
 # =============================================================================
@@ -148,6 +156,7 @@ class TestResult:
     knowledge_items: list = field(default_factory=list)  # KIs for cross-batch merge
     categories: list = field(default_factory=list)  # Discovered categories
     active_learning_stats: dict = field(default_factory=dict)  # ML stats
+    feature_similarities: list = field(default_factory=list)  # Top similar pairs
 
 
 @dataclass
@@ -173,16 +182,25 @@ class PipelineTester:
     """Runs pipeline tests on PDFs."""
 
     def __init__(
-        self, lang: str = "en", verbose: bool = False, quiet: bool = False, debug: bool = False
+        self,
+        lang: str = "en",
+        verbose: bool = False,
+        quiet: bool = False,
+        debug: bool = False,
+        use_active_learning: bool = False,
+        show_features: bool = False,
     ):
         self.lang = lang
         self.verbose = verbose
         self.quiet = quiet
         self.debug = debug
+        self.use_active_learning = use_active_learning
+        self.show_features = show_features
         self.processor = PDFProcessor()
         self.llm = None
         self.splitter = None
         self.analyzer = None
+        self.active_classifier = None
         self._interrupted = False
 
     def _init_llm(self):
@@ -191,11 +209,50 @@ class PipelineTester:
             self.llm = LLMManager(provider="deepseek", quiet=not self.debug)
             self.splitter = ExerciseSplitter()
 
+    def _init_active_learning(self):
+        """Lazy init active learning classifier."""
+        if self.use_active_learning and ACTIVE_LEARNING_AVAILABLE:
+            if self.active_classifier is None:
+                self.active_classifier = ActiveClassifier()
+                if not self.quiet:
+                    print(f"  {cyan('Active Learning')}: Enabled (cold start)")
+
     def _init_analyzer(self):
         """Lazy init analyzer."""
         self._init_llm()
         if self.analyzer is None:
             self.analyzer = ExerciseAnalyzer(llm_manager=self.llm, language=self.lang)
+
+    def _compute_feature_matrix(self, items: list[dict]) -> list[dict]:
+        """Compute embedding similarities between all items (for --show-features)."""
+        if not ACTIVE_LEARNING_AVAILABLE or not items:
+            return []
+
+        # Compute embeddings for all items
+        embeddings = {}
+        for item in items:
+            desc = item.get("description", "") or item.get("name", "")
+            embeddings[item["id"]] = compute_embedding(desc)
+
+        # Compute pairwise similarities
+        similarities = []
+        for i, item_a in enumerate(items):
+            for item_b in items[i + 1 :]:
+                emb_a = embeddings[item_a["id"]]
+                emb_b = embeddings[item_b["id"]]
+                sim = cosine_similarity(emb_a, emb_b)
+
+                # Only show high similarity pairs
+                if sim >= 0.5:
+                    similarities.append({
+                        "item_a": item_a["name"],
+                        "item_b": item_b["name"],
+                        "similarity": sim,
+                    })
+
+        # Sort by similarity descending
+        similarities.sort(key=lambda x: x["similarity"], reverse=True)
+        return similarities[:10]  # Top 10
 
     def test_parse(self, pdf_path: Path) -> TestResult:
         """Stage 1: Test PDF parsing."""
@@ -295,7 +352,7 @@ class PipelineTester:
         return result
 
     def test_analyze(self, pdf_path: Path, course_name: str) -> TestResult:
-        """Stage 1-3: Test full pipeline including analysis (KI names, no grouping)."""
+        """Stage 1-3: Test full pipeline including analysis (KI names + descriptions)."""
         result = self.test_split(pdf_path, course_name)
         if result.status != "PASS":
             return result
@@ -304,6 +361,9 @@ class PipelineTester:
 
         try:
             self._init_analyzer()
+
+            # Group exercises by KI name for description generation
+            ki_exercises: dict[str, list[dict]] = {}
 
             # Analyze each exercise to get KI names
             for ex in result.exercise_details:
@@ -321,9 +381,33 @@ class PipelineTester:
                 )
 
                 ki_name = None
+                learning_approach = None
                 if analysis.knowledge_items:
-                    ki_name = analysis.knowledge_items[0].name
+                    ki = analysis.knowledge_items[0]
+                    ki_name = ki.name
+                    learning_approach = getattr(ki, 'learning_approach', None)
+
                 ex["ki_name"] = ki_name or f"unknown_{ex.get('number', '?')}"
+                ex["learning_approach"] = learning_approach
+
+                # Collect exercises for description generation
+                if ki_name:
+                    if ki_name not in ki_exercises:
+                        ki_exercises[ki_name] = []
+                    ki_exercises[ki_name].append({
+                        "text": ex.get("text_preview", ""),
+                        "context": ex.get("context", ""),
+                        "is_sub": is_sub,
+                    })
+
+            # Generate descriptions for each KI
+            for ki_name, exs in ki_exercises.items():
+                if exs:
+                    description = generate_item_description(exs, self.llm)
+                    # Store description back to exercises
+                    for ex in result.exercise_details:
+                        if ex.get("ki_name") == ki_name:
+                            ex["ki_description"] = description
 
             result.status = "PASS"
 
@@ -398,10 +482,24 @@ class PipelineTester:
                     }
                 )
 
+            # Compute feature similarities (for --show-features)
+            if self.show_features and len(items) >= 2:
+                result.feature_similarities = self._compute_feature_matrix(items)
+
             # INTERNAL MERGE: Find duplicates within this PDF using classify_items
             if len(items) >= 2:
+                # Init active learning if requested
+                self._init_active_learning()
+
                 # classify_items returns (groups, assignments)
-                final_groups, _ = classify_items(items, [], self.llm)
+                final_groups, _ = classify_items(
+                    items, [], self.llm,
+                    active_classifier=self.active_classifier,
+                )
+
+                # Capture active learning stats
+                if self.active_classifier:
+                    result.active_learning_stats = self.active_classifier.get_stats()
 
                 # Collect categories discovered
                 categories_seen = set()
@@ -541,6 +639,8 @@ class TestRunner:
             verbose=args.verbose,
             quiet=args.quiet,
             debug=args.debug,
+            use_active_learning=getattr(args, 'with_active_learning', False),
+            show_features=getattr(args, 'show_features', False),
         )
         self.summary = TestSummary()
         self._interrupted = False
@@ -548,6 +648,12 @@ class TestRunner:
         self._times = []  # Track PDF processing times for ETA
         self._total_llm_hits = 0
         self._total_llm_misses = 0
+
+        # Cumulative active learning stats
+        self._total_al_llm_calls = 0
+        self._total_al_predictions = 0
+        self._total_al_transitive = 0
+        self._total_al_training = 0
 
         # Cross-batch tracking per course
         self._course_items: dict[str, list[dict]] = {}  # course_folder -> accumulated items
@@ -994,6 +1100,35 @@ class TestRunner:
                 if desc and self.args.verbose:
                     print(f"      {dim(self._truncate_output(desc, 65))}")
 
+        # Show active learning stats
+        if result.active_learning_stats:
+            stats = result.active_learning_stats
+            total = stats.get("total", 0)
+            if total > 0:
+                llm_rate = stats.get("llm_call_rate", 1.0)
+                pred_rate = stats.get("prediction_rate", 0.0)
+                print(f"\n  {cyan('Active Learning')}:")
+                print(f"    LLM calls: {stats.get('llm_calls', 0)}/{total} ({llm_rate:.0%})")
+                print(f"    Predictions: {stats.get('predictions', 0)}/{total} ({pred_rate:.0%})")
+                print(f"    Transitive: {stats.get('transitive_inferences', 0)}")
+                print(f"    Training samples: {stats.get('training_samples', 0)}")
+
+        # Show feature similarities (--show-features)
+        if result.feature_similarities:
+            print(f"\n  {cyan('Embedding Similarities')} (top pairs ≥0.5):")
+            for pair in result.feature_similarities:
+                sim = pair["similarity"]
+                # Color code: green if likely match, yellow if borderline
+                if sim >= 0.75:
+                    sim_str = green(f"{sim:.2f}")
+                elif sim >= 0.6:
+                    sim_str = yellow(f"{sim:.2f}")
+                else:
+                    sim_str = dim(f"{sim:.2f}")
+                name_a = self._truncate_output(pair["item_a"], 25)
+                name_b = self._truncate_output(pair["item_b"], 25)
+                print(f"    {sim_str}  {name_a} ↔ {name_b}")
+
     def _truncate_output(self, text: str, max_len: int = 60) -> str:
         """Truncate text for output."""
         text = text.replace("\n", " ").strip()
@@ -1014,6 +1149,14 @@ class TestRunner:
             self.summary.errors += 1
 
         self.summary.warnings.extend(result.warnings)
+
+        # Accumulate active learning stats
+        if result.active_learning_stats:
+            stats = result.active_learning_stats
+            self._total_al_llm_calls += stats.get("llm_calls", 0)
+            self._total_al_predictions += stats.get("predictions", 0)
+            self._total_al_transitive += stats.get("transitive_inferences", 0)
+            self._total_al_training += stats.get("training_samples", 0)
 
     def _print_summary(self):
         """Print test summary."""
@@ -1053,6 +1196,18 @@ class TestRunner:
             print(
                 f"LLM calls: {total_llm} ({self._total_llm_hits} cached, {self._total_llm_misses} new, {hit_rate:.0f}% hit rate)"
             )
+
+        # Active learning summary stats
+        total_al = self._total_al_llm_calls + self._total_al_predictions + self._total_al_transitive
+        if total_al > 0:
+            al_reduction = 1 - (self._total_al_llm_calls / total_al) if total_al > 0 else 0
+            print(f"\n{cyan('Active Learning Summary')}:")
+            print(f"  Total classifications: {total_al}")
+            print(f"  LLM calls: {self._total_al_llm_calls} ({self._total_al_llm_calls/total_al:.0%})")
+            print(f"  ML predictions: {self._total_al_predictions} ({self._total_al_predictions/total_al:.0%})")
+            print(f"  Transitive: {self._total_al_transitive} ({self._total_al_transitive/total_al:.0%})")
+            print(f"  Training samples: {self._total_al_training}")
+            print(f"  LLM reduction: {green(f'{al_reduction:.0%}')}")
 
         # Cross-batch merge summary (parallel mode)
         if self.summary.cross_batch_groups:
@@ -1254,74 +1409,103 @@ class TestRunner:
                         lines.append("\n".join(wrap_lines))
                 lines.append("")
 
-            # Mode: analyze - exercises with KI names, no skill groups
+            # Mode: analyze - exercises with KI names + descriptions
             elif self.args.analyze:
                 lines.append(f"═══ {pdf_name} ═══")
                 lines.append(
                     f"{status} | {r.pages} pages | {r.exercises} exercises ({r.sub_questions} subs)"
                 )
 
-                if r.exercise_details:
+                # Group by KI name for cleaner output
+                ki_to_exercises: dict[str, list] = {}
+                for ex in r.exercise_details:
+                    ki_name = ex.get("ki_name", "unknown")
+                    if ki_name not in ki_to_exercises:
+                        ki_to_exercises[ki_name] = []
+                    ki_to_exercises[ki_name].append(ex)
+
+                if ki_to_exercises:
                     lines.append("")
-                    for ex in r.exercise_details:
-                        if ex["is_sub"]:
-                            num = ex["number"]
-                            indent = "      "
-                        else:
-                            num = f"Ex {ex['number']}"
-                            indent = "    "
-                        sol = " [+sol]" if ex["has_solution"] else ""
-                        ki_name = ex.get("ki_name", "")
-                        ki_label = f" → {ki_name}" if ki_name else ""
-                        lines.append(f"  - {num}{sol}{ki_label}:")
-                        wrapped = textwrap.fill(
-                            ex["text_preview"],
-                            width=80,
-                            initial_indent=indent,
-                            subsequent_indent=indent,
-                        )
-                        lines.append(wrapped)
+                    lines.append("Knowledge Items:")
+                    for ki_name, exercises in sorted(ki_to_exercises.items()):
+                        # Get description from first exercise
+                        ki_desc = exercises[0].get("ki_description", "")
+                        lines.append(f"  • {ki_name} ({len(exercises)} exercises)")
+                        if ki_desc:
+                            lines.append(f"    {ki_desc[:70]}...")
+
+                        # Show exercises under this KI
+                        for ex in exercises:
+                            num = ex.get("number", "?")
+                            sol = " [+sol]" if ex.get("has_solution") else ""
+                            preview = ex.get("text_preview", "")[:50]
+                            lines.append(f"      [{num}]{sol} {preview}...")
                 lines.append("")
 
-            # Mode: full - exercises with KI names + skill groups
+            # Mode: full - KIs grouped by category + skill groups
             else:
+                n_kis = len(r.knowledge_items) if r.knowledge_items else 0
                 n_groups = len(r.skill_groups) if r.skill_groups else 0
                 lines.append(f"═══ {pdf_name} ═══")
                 lines.append(
-                    f"{status} | {r.pages} pages | {r.exercises} exercises → {n_groups} skill groups"
+                    f"{status} | {r.pages} pages | {r.exercises} exercises → {n_kis} KIs"
                 )
 
-                if r.exercise_details:
+                # Group KIs by category
+                if r.knowledge_items:
                     lines.append("")
-                    lines.append("Exercises:")
-                    for ex in r.exercise_details:
-                        if ex["is_sub"]:
-                            num = ex["number"]
-                            indent = "        "
-                        else:
-                            num = f"Ex {ex['number']}"
-                            indent = "      "
-                        sol = " [+sol]" if ex["has_solution"] else ""
-                        ki_name = ex.get("ki_name", "")
-                        ki_label = f" → {ki_name}" if ki_name else ""
-                        lines.append(f"    - {num}{sol}{ki_label}:")
-                        wrapped = textwrap.fill(
-                            ex["text_preview"],
-                            width=80,
-                            initial_indent=indent,
-                            subsequent_indent=indent,
-                        )
-                        lines.append(wrapped)
+                    lines.append("Knowledge Items:")
+                    cats_to_items: dict[str, list] = {}
+                    for item in r.knowledge_items:
+                        cat = item.get("category", "Uncategorized")
+                        if cat not in cats_to_items:
+                            cats_to_items[cat] = []
+                        cats_to_items[cat].append(item)
 
+                    for cat, items in sorted(cats_to_items.items()):
+                        lines.append(f"  [{cat}]")
+                        for item in items:
+                            name = item.get("name", "?")
+                            desc = item.get("description", "")[:60]
+                            lines.append(f"    • {name}")
+                            if desc:
+                                lines.append(f"      {desc}...")
+
+                # Merged skill groups
                 if r.skill_groups:
                     lines.append("")
-                    lines.append("Skill Groups:")
+                    lines.append(f"Merged Groups ({n_groups}):")
                     for group in r.skill_groups:
                         canonical = group.get("canonical", "Unknown")
-                        lines.append(f"    [{canonical}]")
+                        category = group.get("category", "")
+                        cat_label = f" [{category}]" if category else ""
+                        lines.append(f"  ► {canonical}{cat_label}")
                         for member in group.get("members", []):
                             name = member.get("name", "?")
-                            lines.append(f"      • {name}")
+                            lines.append(f"      ← {name}")
+
+                # Feature similarities
+                if r.feature_similarities:
+                    lines.append("")
+                    lines.append("Embedding Similarities (≥0.5):")
+                    for pair in r.feature_similarities[:5]:  # Top 5
+                        sim = pair["similarity"]
+                        lines.append(
+                            f"  {sim:.2f}  {pair['item_a'][:25]} ↔ {pair['item_b'][:25]}"
+                        )
+
+                # Active learning stats
+                if r.active_learning_stats:
+                    stats = r.active_learning_stats
+                    total = stats.get("total", 0)
+                    if total > 0:
+                        llm_calls = stats.get("llm_calls", 0)
+                        preds = stats.get("predictions", 0)
+                        trans = stats.get("transitive_inferences", 0)
+                        lines.append("")
+                        lines.append(
+                            f"Active Learning: {llm_calls} LLM, {preds} ML, {trans} transitive"
+                        )
 
                 lines.append("")
 
@@ -1426,6 +1610,18 @@ Processing Modes (--full with multiple PDFs):
         "--independent",
         action="store_true",
         help="Independent PDFs, no cross-batch merge (internal merge only)",
+    )
+
+    # Active learning
+    parser.add_argument(
+        "--with-active-learning",
+        action="store_true",
+        help="Use active learning classifier (shows ML vs LLM stats)",
+    )
+    parser.add_argument(
+        "--show-features",
+        action="store_true",
+        help="Show embedding similarity and feature scores",
     )
 
     # Output options
