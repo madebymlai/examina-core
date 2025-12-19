@@ -45,18 +45,18 @@ def assign_category(
 
     categories_text = "\n".join(f"- {c}" for c in existing_categories)
 
-    prompt = f"""Assign this item to a category.
+    prompt = f"""Assign this item to a sub-topic.
 
-Existing categories:
+Existing sub-topics:
 {categories_text}
 
 Item: {item.get('description', item.get('name', ''))}
 
-Pick the best fitting category, or suggest NEW if none fit.
-NEW categories should be 2-3 words, broad topic area.
+Pick the best fitting sub-topic, or suggest NEW if none fit.
+NEW must be specific (2-3 words), not a course name.
 
-Return JSON: {{"category": "Category Name", "is_new": false}}
-Or: {{"category": "New Category Name", "is_new": true}}"""
+Return JSON: {{"category": "sub-topic name (lowercase)", "is_new": false}}
+Or: {{"category": "new sub-topic name (lowercase)", "is_new": true}}"""
 
     try:
         response = llm.generate(
@@ -88,13 +88,13 @@ Or: {{"category": "New Category Name", "is_new": true}}"""
 
 def _generate_category(item: dict, llm: LLMManager) -> str:
     """Generate category for first item in course."""
-    prompt = f"""What broad topic category does this belong to?
+    prompt = f"""What sub-topic does this item belong to?
 
 Item: {item.get('description', item.get('name', ''))}
 
-Return a 2-3 word category name (e.g., "Kinematics", "Data Structures", "Contract Law").
+Return a specific sub-topic (2-3 words), NOT the course or subject name.
 
-Return JSON: {{"category": "Category Name"}}"""
+Return JSON: {{"category": "sub-topic name (lowercase)"}}"""
 
     try:
         response = llm.generate(
