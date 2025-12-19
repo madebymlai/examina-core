@@ -379,6 +379,7 @@ async def _analyze_exercise(
   - Can be marked: a), b), c), 1., 2., i), ii), -, •
   - Can be unmarked: separate paragraphs asking different things
 - has_sub_questions = **false** if exercise contains only **ONE task** (with its data/context)
+- has_sub_questions = **false** for multiple choice questions where there are answer options
 
 EXERCISE:
 \"\"\"
