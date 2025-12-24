@@ -45,14 +45,14 @@ def assign_category(
 
     categories_text = "\n".join(f"- {c}" for c in existing_categories)
 
-    prompt = f"""Assign this item to a sub-topic.
+    prompt = f"""Assign this item to a broad sub-topic.
 
 Existing sub-topics:
 {categories_text}
 
 Item: {item.get('description', item.get('name', ''))}
 
-Pick the best fitting sub-topic, or suggest NEW if none fit.
+Pick the best fitting broad sub-topic, or suggest NEW if none fit.
 NEW must be broad (1-2 words), not a course name.
 
 Return JSON: {{"category": "sub-topic name (lowercase)", "is_new": false}}
@@ -88,7 +88,7 @@ Or: {{"category": "new sub-topic name (lowercase)", "is_new": true}}"""
 
 def _generate_category(item: dict, llm: LLMManager) -> str:
     """Generate category for first item in course."""
-    prompt = f"""What sub-topic does this item belong to?
+    prompt = f"""What broad sub-topic does this item belong to?
 
 Item: {item.get('description', item.get('name', ''))}
 
