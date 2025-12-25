@@ -2,36 +2,36 @@
 
 ## Executive Summary
 
-Successfully implemented a **fully generic theory concept dependency visualization system** for Examina. The system dynamically discovers prerequisite relationships between concepts using LLM-based analysis, requiring **zero hardcoding** of subject-specific knowledge.
+Successfully implemented a **fully generic theory concept dependency visualization system** for Qupled. The system dynamically discovers prerequisite relationships between concepts using LLM-based analysis, requiring **zero hardcoding** of subject-specific knowledge.
 
 ## Implementation Details
 
 ### Files Created
 
-1. **`/home/laimk/git/Examina/core/concept_graph.py`** (342 lines)
+1. **`/home/laimk/git/Qupled/core/concept_graph.py`** (342 lines)
    - `Concept`: Data class representing a theory concept
    - `ConceptGraph`: DAG implementation with topological sort and cycle detection
    - `ConceptGraphBuilder`: LLM-based prerequisite discovery and graph construction
 
-2. **`/home/laimk/git/Examina/core/concept_visualizer.py`** (244 lines)
+2. **`/home/laimk/git/Qupled/core/concept_visualizer.py`** (244 lines)
    - `ConceptVisualizer`: Multi-format rendering (ASCII, Mermaid, JSON)
    - Learning path visualization
    - Level-based concept grouping
 
-3. **`/home/laimk/git/Examina/cli.py`** (modified)
+3. **`/home/laimk/git/Qupled/cli.py`** (modified)
    - Added `concept-graph` command with format options
    - Integrated with existing CLI infrastructure
 
-4. **`/home/laimk/git/Examina/docs/CONCEPT_GRAPH.md`** (500+ lines)
+4. **`/home/laimk/git/Qupled/docs/CONCEPT_GRAPH.md`** (500+ lines)
    - Complete user documentation
    - API reference
    - Examples for multiple subjects
 
-5. **`/home/laimk/git/Examina/scripts/test_concept_graph.py`** (280 lines)
+5. **`/home/laimk/git/Qupled/scripts/test_concept_graph.py`** (280 lines)
    - Automated tests for CS and Math concepts
    - Sample concept setup utilities
 
-6. **`/home/laimk/git/Examina/scripts/demo_generic_concept_graph.py`** (220 lines)
+6. **`/home/laimk/git/Qupled/scripts/demo_generic_concept_graph.py`** (220 lines)
    - Demonstrations for Chemistry, Physics, Biology
    - Proof of generic design
 
@@ -174,22 +174,22 @@ Result: ✅ Correct molecular biology prerequisite flow
 
 ```bash
 # View concept graph
-examina concept-graph --course B006807
+qupled concept-graph --course B006807
 
 # Export as Mermaid
-examina concept-graph --course B006807 --format mermaid --export graph.mmd
+qupled concept-graph --course B006807 --format mermaid --export graph.mmd
 
 # Export as JSON
-examina concept-graph --course B006807 --format json --export graph.json
+qupled concept-graph --course B006807 --format json --export graph.json
 
 # Show learning path to specific concept
-examina concept-graph --course B006807 --concept eigenvalues
+qupled concept-graph --course B006807 --concept eigenvalues
 ```
 
 ### Example Output
 
 ```bash
-$ examina concept-graph --course B006807
+$ qupled concept-graph --course B006807
 
 Building Concept Graph for B006807
 
@@ -332,7 +332,7 @@ Each concept requires an LLM call on first run.
 
 ### With Learn Command
 ```bash
-examina learn --course B006807 --loop eigenvalues
+qupled learn --course B006807 --loop eigenvalues
 
 Prerequisites:
   • Vector Spaces (mastered ✓)
@@ -345,7 +345,7 @@ Recommendation: Complete "Determinants" before continuing.
 
 ### With Quiz Command
 ```bash
-examina quiz --course B006807 --adaptive
+qupled quiz --course B006807 --adaptive
 
 Selecting questions based on concept dependencies...
   ✓ Mastered: Vector Spaces, Linear Independence
@@ -357,7 +357,7 @@ Quiz will focus on Matrix Representation prerequisites.
 
 ### With Analytics
 ```bash
-examina analytics --course B006807
+qupled analytics --course B006807
 
 Concept Mastery:
   Vector Spaces:          ████████████████ 95%
@@ -379,7 +379,7 @@ Successfully implemented a **fully generic theory concept dependency visualizati
 ✅ Provides multiple visualization formats (ASCII, Mermaid, JSON)
 ✅ Implements robust graph algorithms (topological sort, cycle detection)
 ✅ Includes comprehensive documentation and testing
-✅ Integrates seamlessly with existing Examina CLI
+✅ Integrates seamlessly with existing Qupled CLI
 
 The system demonstrates that **LLMs can understand deep conceptual relationships across all academic domains**, enabling truly generic educational software that adapts to any course without configuration.
 

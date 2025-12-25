@@ -1,8 +1,8 @@
-# Rate Limiting System for Examina
+# Rate Limiting System for Qupled
 
 ## Overview
 
-Examina now includes a **provider-agnostic rate limiting system** that automatically tracks and throttles LLM API usage across all providers. This prevents hitting API rate limits during analysis and ensures smooth operation with any LLM provider.
+Qupled now includes a **provider-agnostic rate limiting system** that automatically tracks and throttles LLM API usage across all providers. This prevents hitting API rate limits during analysis and ensures smooth operation with any LLM provider.
 
 ## Key Features
 
@@ -98,14 +98,14 @@ No code changes needed anywhere else!
 
 ### Automatic Rate Limiting
 
-Rate limiting happens **automatically** when you use any Examina command:
+Rate limiting happens **automatically** when you use any Qupled command:
 
 ```bash
 # Analysis automatically throttles if needed
-examina analyze --course B006802 --provider groq
+qupled analyze --course B006802 --provider groq
 
 # Quiz commands respect rate limits
-examina quiz --course B006802 --provider anthropic
+qupled quiz --course B006802 --provider anthropic
 ```
 
 ### Viewing Rate Limit Status
@@ -114,14 +114,14 @@ Check current usage:
 
 ```bash
 # View all providers
-examina rate-limits
+qupled rate-limits
 
 # View specific provider
-examina rate-limits --provider groq
+qupled rate-limits --provider groq
 
 # Reset tracking (if needed)
-examina rate-limits --reset
-examina rate-limits --provider groq --reset
+qupled rate-limits --reset
+qupled rate-limits --provider groq --reset
 ```
 
 ### Example Output
@@ -304,7 +304,7 @@ python scripts/test_generic_rate_limiting.py
 
 Check configuration:
 ```bash
-examina rate-limits
+qupled rate-limits
 ```
 
 Verify your provider is configured:
@@ -325,7 +325,7 @@ export GROQ_RPM=25  # Lower than actual 30 to be safe
 Clear cache and restart:
 ```bash
 rm data/cache/rate_limits.json
-examina rate-limits --reset
+qupled rate-limits --reset
 ```
 
 ## Future Enhancements
@@ -348,4 +348,4 @@ This system helps ensure compliance with API provider terms of service by:
 
 ## License
 
-Same as Examina (see main repository LICENSE)
+Same as Qupled (see main repository LICENSE)

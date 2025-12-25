@@ -2,7 +2,7 @@
 
 ## Overview
 
-FastAPI REST API wrapping `examina-core` for the web application.
+FastAPI REST API wrapping `qupled-core` for the web application.
 
 ---
 
@@ -107,7 +107,7 @@ FastAPI REST API wrapping `examina-core` for the web application.
 
 ---
 
-## File Structure (examina-cloud/backend)
+## File Structure (qupled-cloud/backend)
 
 ```
 backend/
@@ -141,7 +141,7 @@ backend/
 │   │   └── progress.py
 │   ├── services/
 │   │   ├── auth.py          # User management
-│   │   ├── course.py        # Wraps examina-core
+│   │   ├── course.py        # Wraps qupled-core
 │   │   ├── learn.py
 │   │   ├── quiz.py
 │   │   └── progress.py
@@ -158,7 +158,7 @@ backend/
 
 ## Key Design Decisions
 
-1. **examina-core as dependency** - `pip install git+...`, don't duplicate
+1. **qupled-core as dependency** - `pip install git+...`, don't duplicate
 2. **Multi-tenant** - All queries scoped by `user_id`
 3. **Async everywhere** - `asyncpg` + `async def` endpoints
 4. **Background for long tasks** - Ingestion, analysis via Celery

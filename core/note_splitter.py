@@ -1,5 +1,5 @@
 """
-Note splitting for Examina.
+Note splitting for Qupled.
 Splits lecture notes PDFs into topic sections based on headers/chapters.
 
 Unlike ExerciseSplitter which looks for exercise markers ("Esercizio N"),

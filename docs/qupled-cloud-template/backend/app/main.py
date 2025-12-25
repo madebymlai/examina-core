@@ -1,5 +1,5 @@
 """
-Examina Cloud - FastAPI Backend
+Qupled Cloud - FastAPI Backend
 """
 
 from app.core.config import settings
@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
-    title="Examina Cloud API",
+    title="Qupled Cloud API",
     description="AI-powered exam preparation platform",
     version="0.1.0",
     docs_url="/docs" if settings.DEBUG else None,
@@ -34,7 +34,7 @@ async def health_check():
 async def root():
     """Root endpoint."""
     return {
-        "name": "Examina Cloud API",
+        "name": "Qupled Cloud API",
         "docs": "/docs",
         "health": "/health",
     }

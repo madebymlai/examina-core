@@ -1,4 +1,4 @@
-"""Data Transfer Objects for examina-core business logic."""
+"""Data Transfer Objects for qupled-core business logic."""
 
 from .mastery import (
     ExerciseReviewData,

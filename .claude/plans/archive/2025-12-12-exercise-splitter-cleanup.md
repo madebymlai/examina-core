@@ -4,7 +4,7 @@
 Refactor exercise_splitter.py to have clear, consistent naming for LLM calls. Remove dead pattern-mode code, eliminate "explicit" prefix (since explicit is the only mode), and separate context summaries from end markers. This makes the codebase cleaner and easier to maintain.
 
 ## Files to Modify
-- `/home/laimk/git/examina/core/exercise_splitter.py` - all changes
+- `/home/laimk/git/qupled/core/exercise_splitter.py` - all changes
 
 ## Current State (Confusing)
 | Function | Purpose | Issue |

@@ -1,11 +1,11 @@
-# Examina Cloud
+# Qupled Cloud
 
-Private SaaS platform for Examina - AI-powered exam preparation.
+Private SaaS platform for Qupled - AI-powered exam preparation.
 
 ## Repository Structure
 
 ```
-examina-cloud/
+qupled-cloud/
 ├── backend/                 # FastAPI backend
 │   ├── app/
 │   │   ├── api/            # API routes
@@ -20,7 +20,7 @@ examina-cloud/
 │   │   │   ├── config.py
 │   │   │   └── security.py
 │   │   ├── models/         # Pydantic models
-│   │   ├── services/       # Business logic (imports examina-core)
+│   │   ├── services/       # Business logic (imports qupled-core)
 │   │   └── main.py
 │   ├── requirements.txt
 │   └── Dockerfile
@@ -62,8 +62,8 @@ examina-cloud/
 
 ```bash
 # Clone
-git clone git@github.com:madebymlai/examina-cloud.git
-cd examina-cloud
+git clone git@github.com:madebymlai/qupled-cloud.git
+cd qupled-cloud
 
 # Copy env file
 cp .env.example .env
@@ -91,13 +91,13 @@ docker-compose up -d
                     └──────┬──────┘     └─────────────┘
                            │
                     ┌──────▼──────┐
-                    │ examina-core│  (pip install from public repo)
+                    │ qupled-core│  (pip install from public repo)
                     └─────────────┘
 ```
 
 ## Key Design Decisions
 
-1. **examina-core as dependency** - Import from public repo, don't duplicate code
+1. **qupled-core as dependency** - Import from public repo, don't duplicate code
 2. **Multi-tenant from day 1** - All queries scoped by user_id
 3. **Background jobs for analysis** - Long-running tasks via Celery
 4. **JWT authentication** - Stateless, scalable auth
@@ -109,7 +109,7 @@ See `.env.example` for full list. Key ones:
 
 ```bash
 # Database
-DATABASE_URL=postgresql://user:pass@localhost:5432/examina
+DATABASE_URL=postgresql://user:pass@localhost:5432/qupled
 
 # Redis (job queue)
 REDIS_URL=redis://localhost:6379
@@ -118,7 +118,7 @@ REDIS_URL=redis://localhost:6379
 JWT_SECRET_KEY=your-secret-key
 JWT_ALGORITHM=HS256
 
-# LLM Providers (from examina-core)
+# LLM Providers (from qupled-core)
 DEEPSEEK_API_KEY=...
 GROQ_API_KEY=...
 ANTHROPIC_API_KEY=...

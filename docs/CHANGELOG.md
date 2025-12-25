@@ -1,4 +1,4 @@
-# Examina - Changelog
+# Qupled - Changelog
 
 All notable changes and completed phases are documented here.
 
@@ -39,12 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added - Web API Layer (Phase 2)
 
-**examina-cloud/backend** - FastAPI REST API wrapping examina-core for SaaS deployment.
+**qupled-cloud/backend** - FastAPI REST API wrapping qupled-core for SaaS deployment.
 
 #### Phase 2.1: Core Setup
 - SQLAlchemy async models for PostgreSQL (User, Course, Topic, CoreLoop, Exercise, Quiz, Job)
 - JWT authentication with access/refresh tokens
-- Dependency injection for database sessions and ExaminaService
+- Dependency injection for database sessions and QupledService
 - Multi-tenant data isolation (all queries scoped by user_id)
 
 #### Phase 2.2: Read-Only Endpoints
@@ -79,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tasks**: Celery workers with Redis broker
 - **Config**: Environment-based settings via pydantic-settings
 
-### Files Added (examina-cloud/backend)
+### Files Added (qupled-cloud/backend)
 ```
 app/
 ├── api/v1/
@@ -156,10 +156,10 @@ app/
   - `--course` - Filter by course code
 
 - **Configuration options** (via environment variables):
-  - `EXAMINA_PROCEDURE_CACHE_ENABLED` - Enable/disable caching (default: true)
-  - `EXAMINA_PROCEDURE_CACHE_EMBEDDING_THRESHOLD` - Embedding similarity threshold (default: 0.90)
-  - `EXAMINA_PROCEDURE_CACHE_TEXT_THRESHOLD` - Text validation threshold (default: 0.70)
-  - `EXAMINA_PROCEDURE_CACHE_MIN_CONFIDENCE` - Minimum confidence for caching (default: 0.85)
+  - `QUPLED_PROCEDURE_CACHE_ENABLED` - Enable/disable caching (default: true)
+  - `QUPLED_PROCEDURE_CACHE_EMBEDDING_THRESHOLD` - Embedding similarity threshold (default: 0.90)
+  - `QUPLED_PROCEDURE_CACHE_TEXT_THRESHOLD` - Text validation threshold (default: 0.70)
+  - `QUPLED_PROCEDURE_CACHE_MIN_CONFIDENCE` - Minimum confidence for caching (default: 0.85)
 
 ### Performance
 - **100% cache hit rate** on re-analysis of previously analyzed exercises
@@ -243,10 +243,10 @@ app/
 ### Usage
 ```bash
 # Sync mode (default, backward compatible)
-examina analyze --course ADE
+qupled analyze --course ADE
 
 # Async mode (1.1-5x faster depending on workload)
-examina analyze --course ADE --async-mode
+qupled analyze --course ADE --async-mode
 ```
 
 ### Technical Details
@@ -282,7 +282,7 @@ examina analyze --course ADE --async-mode
   - Automatic primary language detection from first 5 exercises
   - LLM-based procedure translation to primary language
   - Prevents cross-language duplicate procedures in bilingual courses
-  - Configurable via `EXAMINA_MONOLINGUAL_ENABLED` environment variable
+  - Configurable via `QUPLED_MONOLINGUAL_ENABLED` environment variable
   - Backward compatible (default: bilingual mode)
   - Comprehensive test suite (4/4 tests pass)
   - Full documentation: `MONOLINGUAL_MODE.md`, `IMPLEMENTATION_SUMMARY.md`
@@ -411,7 +411,7 @@ examina analyze --course ADE --async-mode
 - Now works for ANY domain without hardcoding (Chemistry, Physics, Math, etc.)
 - LLM-based opposite detection for high-similarity pairs (>85%)
 - In-memory caching to avoid repeated API calls
-- Maintains Examina's "no hardcoding" philosophy
+- Maintains Qupled's "no hardcoding" philosophy
 
 ### Benefits
 - Scales to new courses from any domain automatically
@@ -584,9 +584,9 @@ examina analyze --course ADE --async-mode
 - `core/analytics.py` (ProgressAnalytics)
 
 **CLI Commands:**
-- `examina quiz` - Interactive quiz with multiple filters
-- `examina progress` - Progress dashboard
-- `examina suggest` - Personalized study recommendations
+- `qupled quiz` - Interactive quiz with multiple filters
+- `qupled progress` - Progress dashboard
+- `qupled suggest` - Personalized study recommendations
 
 **Achievement:** Completed in ~4 hours using 4 parallel agents (vs. estimated 35-45 hours = 9-11x speedup)
 
@@ -607,9 +607,9 @@ examina analyze --course ADE --async-mode
 - `core/tutor.py` - Main teaching interface
 
 **CLI Commands:**
-- `examina learn` - Comprehensive explanations
-- `examina practice` - Interactive problem-solving
-- `examina generate` - Exercise generation
+- `qupled learn` - Comprehensive explanations
+- `qupled practice` - Interactive problem-solving
+- `qupled generate` - Exercise generation
 
 **Test Results:**
 - Successfully tested on Moore machines, garage door control
@@ -645,8 +645,8 @@ examina analyze --course ADE --async-mode
 - `utils/splitter.py` - Exercise splitting
 
 **CLI Commands:**
-- `examina analyze` - Run AI analysis
-- `examina deduplicate` - Clean up duplicates
+- `qupled analyze` - Run AI analysis
+- `qupled deduplicate` - Clean up duplicates
 
 **Optimizations:**
 - Rate limit handling with exponential retry
@@ -669,7 +669,7 @@ examina analyze --course ADE --async-mode
 - `utils/pdf_extractor.py` - PDF parsing
 
 **CLI Commands:**
-- `examina ingest` - Import exam PDFs (from ZIP or directory)
+- `qupled ingest` - Import exam PDFs (from ZIP or directory)
 
 ---
 
@@ -689,10 +689,10 @@ examina analyze --course ADE --async-mode
 - Automatic timestamps
 
 **CLI Commands:**
-- `examina init` - Initialize database
-- `examina add-course` - Add new course
-- `examina list-courses` - List all courses
-- `examina info` - Course statistics
+- `qupled init` - Initialize database
+- `qupled add-course` - Add new course
+- `qupled list-courses` - List all courses
+- `qupled info` - Course statistics
 
 ---
 

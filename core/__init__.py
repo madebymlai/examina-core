@@ -1,5 +1,5 @@
 """
-Examina Core - AI-powered exam preparation library.
+Qupled Core - AI-powered exam preparation library.
 
 Main components:
 - Analyzer: Exercise analysis and procedure extraction

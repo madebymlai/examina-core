@@ -1,4 +1,4 @@
-EXAMINA TUTOR - LEARNING FLOW ARCHITECTURE
+QUPLED TUTOR - LEARNING FLOW ARCHITECTURE
 ==========================================
 
 ┌─────────────────────────────────────────────────────────────────────┐

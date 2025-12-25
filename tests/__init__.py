@@ -1,1 +1,1 @@
-"""Test package for Examina."""
+"""Test package for Qupled."""

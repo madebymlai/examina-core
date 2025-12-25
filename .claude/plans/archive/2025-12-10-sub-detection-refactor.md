@@ -27,7 +27,7 @@ Remove unreliable `sub_triggers` feature and replace with boundary-based sub-que
 
 ## Files to Modify
 
-- `/home/laimk/git/examina/core/exercise_splitter.py` - main changes
+- `/home/laimk/git/qupled/core/exercise_splitter.py` - main changes
 
 ## Steps
 

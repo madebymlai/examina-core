@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Pipeline Test Suite for examina-core.
+Pipeline Test Suite for qupled-core.
 
 Tests parsing, exercise splitting, and knowledge item extraction
 across diverse exam PDFs from multiple academic domains.
 
 Defaults (ON):
 - Active learning: ML classifier reduces LLM calls 70-90%
-- Persist: Training data saved to .examina/training_cache.json
+- Persist: Training data saved to .qupled/training_cache.json
 - Timeout: 300s per PDF (prevents hangs)
 
 Quick Start:
@@ -54,7 +54,7 @@ try:
 except ImportError:
     TQDM_AVAILABLE = False
 
-# Add examina to path
+# Add qupled to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.analyzer import ExerciseAnalyzer, generate_item_description
@@ -75,9 +75,9 @@ except ImportError:
 # Configuration
 # =============================================================================
 
-TEST_DATA_PATH = Path("/home/laimk/git/examina-cloud/test-data")
+TEST_DATA_PATH = Path("/home/laimk/git/qupled-cloud/test-data")
 TEST_RESULTS_PATH = Path(__file__).parent.parent / "test-results"
-TRAINING_CACHE_PATH = Path(__file__).parent.parent / ".examina" / "training_cache.json"
+TRAINING_CACHE_PATH = Path(__file__).parent.parent / ".qupled" / "training_cache.json"
 
 COURSES = {
     "ADE-EXAMS": "Architettura degli Elaboratori",
@@ -2337,7 +2337,7 @@ document.querySelectorAll('.collapsible').forEach(el => {{
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Pipeline Test Suite for examina-core",
+        description="Pipeline Test Suite for qupled-core",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

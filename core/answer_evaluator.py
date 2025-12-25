@@ -6,7 +6,7 @@ Supports three modes:
 - LEARN: Pedagogical feedback focused on learning (hints, encouragement)
 - RECALL: Compare student explanation to reference content (recall_score, points, misconceptions)
 
-Extracted from examina-cloud/backend/app/api/v1/quiz.py and learn.py to enable:
+Extracted from qupled-cloud/backend/app/api/v1/quiz.py and learn.py to enable:
 - Reuse across CLI and web
 - Consistent evaluation behavior
 - Clean separation of evaluation logic from data access

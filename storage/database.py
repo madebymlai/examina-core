@@ -1,5 +1,5 @@
 """
-Database management for Examina.
+Database management for Qupled.
 Handles SQLite operations and schema management.
 """
 
@@ -12,7 +12,7 @@ from config import Config
 
 
 class Database:
-    """Manages SQLite database operations for Examina."""
+    """Manages SQLite database operations for Qupled."""
 
     def __init__(self, db_path: Optional[Path] = None):
         """Initialize database connection.
@@ -442,7 +442,7 @@ class Database:
             """)
             print("[INFO] Migration completed: language column added to topics")
             print(
-                "[INFO] Note: Run 'examina detect-languages --course CODE' to detect languages for existing data"
+                "[INFO] Note: Run 'qupled detect-languages --course CODE' to detect languages for existing data"
             )
 
         # Phase: Learning Materials Support - Create tables for lecture notes, theory, worked examples

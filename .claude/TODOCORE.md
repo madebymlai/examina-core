@@ -1,8 +1,8 @@
-# Examina - TODO
+# Qupled - TODO
 
 > `[ ]` = pending, `[x]` = complete, `📋` = planned
 
-> CLI tool and examina-core library tasks. For web app, see `examina-cloud/TODO.md`
+> CLI tool and qupled-core library tasks. For web app, see `qupled-cloud/TODO.md`
 
 ## Pending
 
@@ -10,7 +10,7 @@
 - **Groq rate limit**: Free tier (30 req/min) prevents analyzing large courses in one run
 - **API timeouts**: Enhanced learn with prerequisites may timeout - use `--no-concepts` flag
 - **Topic splitting**: `--delete-old` may fail due to foreign key constraints if topic has references
-- **examina-core packaging**: `from config import Config` fails when installed as package
+- **qupled-core packaging**: `from config import Config` fails when installed as package
 - **LLMExerciseSplitter**: ~~Strict text matching fails~~ Fixed with multi-page search + 6-strategy fuzzy matching + LLM-provided regex patterns (language-agnostic). Remaining: cross-page solution matching.
 - **Solution detection broken**: `with_solutions` count always returns 0 even when PDFs contain solutions. Golden tests confirm ADE exams have 11-13 solutions but splitter reports 0. Fix planned in "Call 5: Solution Detection" below.
 - ~~**Circular import in Docker**~~: Fixed with lazy import of RateLimitTracker in llm_manager.py
@@ -133,7 +133,7 @@
 
 ## Web Migration
 
-See `examina-cloud/TODO.md` for:
+See `qupled-cloud/TODO.md` for:
 - Phase 2: API Layer ✅
 - Phase 4: Frontend ✅ (React + React Query)
 - Phase 5: Docker/Deploy ✅ (CI/CD, healthchecks)

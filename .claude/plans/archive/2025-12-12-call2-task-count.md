@@ -9,7 +9,7 @@ Exercise 4 has 5 `o` bullet sub-questions, but Call 3 returned only 1 because:
 - LLM interpreted "calculate in these representations" as ONE task with conditions
 
 ## Files to Modify
-- `/home/laimk/git/examina/core/exercise_splitter.py`
+- `/home/laimk/git/qupled/core/exercise_splitter.py`
 
 ## Steps
 
@@ -46,7 +46,7 @@ boundaries_with_subs = [b for b in boundaries_with_subs if b.number in explicit_
 
 ### Step 3: Test
 ```bash
-cd /home/laimk/git/examina && rm -rf data/cache/llm/*.json && python3 << 'EOF'
+cd /home/laimk/git/qupled && rm -rf data/cache/llm/*.json && python3 << 'EOF'
 # Test with ADE 2020
 # Exercise 4: Call 3 returns 1 → validation fails → standalone
 # Expected: [4] instead of [4.1]

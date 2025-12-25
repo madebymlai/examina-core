@@ -1,3 +1,3 @@
 # Rules
 
-See canonical rules at: ~/git/examina-cloud/.claude/rules.md
+See canonical rules at: ~/git/qupled-cloud/.claude/rules.md

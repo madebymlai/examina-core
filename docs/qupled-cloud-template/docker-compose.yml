@@ -5,15 +5,15 @@ services:
   db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: examina
-      POSTGRES_PASSWORD: examina
-      POSTGRES_DB: examina
+      POSTGRES_USER: qupled
+      POSTGRES_PASSWORD: qupled
+      POSTGRES_DB: qupled
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U examina"]
+      test: ["CMD-SHELL", "pg_isready -U qupled"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -39,7 +39,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://examina:examina@db:5432/examina
+      - DATABASE_URL=postgresql://qupled:qupled@db:5432/qupled
       - REDIS_URL=redis://redis:6379/0
     env_file:
       - .env
@@ -59,7 +59,7 @@ services:
       context: ./worker
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=postgresql://examina:examina@db:5432/examina
+      - DATABASE_URL=postgresql://qupled:qupled@db:5432/qupled
       - REDIS_URL=redis://redis:6379/0
     env_file:
       - .env
@@ -79,7 +79,7 @@ services:
       context: ./worker
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=postgresql://examina:examina@db:5432/examina
+      - DATABASE_URL=postgresql://qupled:qupled@db:5432/qupled
       - REDIS_URL=redis://redis:6379/0
     env_file:
       - .env

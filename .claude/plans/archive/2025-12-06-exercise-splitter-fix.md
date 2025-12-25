@@ -113,7 +113,7 @@ Q = {q0, q1, q2}, Σ = {a, b}, ...
 ## Implementation Steps
 
 ### Step 1: Define data structures
-**File:** `/home/laimk/git/examina/core/exercise_splitter.py`
+**File:** `/home/laimk/git/qupled/core/exercise_splitter.py`
 **Complexity:** Low
 
 ```python
@@ -144,7 +144,7 @@ class ExerciseNode:
 ```
 
 ### Step 2: LLM detects PATTERN, we find all markers
-**File:** `/home/laimk/git/examina/core/exercise_splitter.py`
+**File:** `/home/laimk/git/qupled/core/exercise_splitter.py`
 **Complexity:** Medium
 
 **Key insight:** LLM identifies the PATTERN (e.g., "Esercizio"), we search FULL document.
@@ -250,7 +250,7 @@ def _get_sub_regex(self, sub_format: str | None) -> re.Pattern | None:
 ```
 
 ### Step 3: Build hierarchy from markers
-**File:** `/home/laimk/git/examina/core/exercise_splitter.py`
+**File:** `/home/laimk/git/qupled/core/exercise_splitter.py`
 **Complexity:** Medium
 
 ```python
@@ -306,7 +306,7 @@ def _build_hierarchy(
 ```
 
 ### Step 5: Expand to flat exercises with context
-**File:** `/home/laimk/git/examina/core/exercise_splitter.py`
+**File:** `/home/laimk/git/qupled/core/exercise_splitter.py`
 **Complexity:** Medium
 
 ```python
@@ -350,7 +350,7 @@ def _expand_exercises(
 ```
 
 ### Step 6: Update main split function
-**File:** `/home/laimk/git/examina/core/exercise_splitter.py`
+**File:** `/home/laimk/git/qupled/core/exercise_splitter.py`
 **Complexity:** Medium
 
 ```python
@@ -424,7 +424,7 @@ def _detect_markers_with_regex(self, full_text: str) -> list[Marker]:
 ```
 
 ### Step 7: Handle repeated headers
-**File:** `/home/laimk/git/examina/core/exercise_splitter.py`
+**File:** `/home/laimk/git/qupled/core/exercise_splitter.py`
 **Complexity:** Low
 
 ```python
@@ -450,7 +450,7 @@ def _detect_repeated_headers(self, pdf_content: PDFContent) -> set[str]:
 ```
 
 ### Step 8: Fallback for unstructured PDFs
-**File:** `/home/laimk/git/examina/core/exercise_splitter.py`
+**File:** `/home/laimk/git/qupled/core/exercise_splitter.py`
 **Complexity:** Low
 
 ```python
@@ -533,7 +533,7 @@ for ex in exercises:
 
 | File | Changes |
 |------|---------|
-| `/home/laimk/git/examina/core/exercise_splitter.py` | Major refactor |
+| `/home/laimk/git/qupled/core/exercise_splitter.py` | Major refactor |
 
 ---
 

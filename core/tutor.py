@@ -1,5 +1,5 @@
 """
-Interactive AI tutor for Examina.
+Interactive AI tutor for Qupled.
 Provides learning features for KnowledgeItems.
 """
 

@@ -12,8 +12,8 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install examina-core from public repo
-RUN pip install git+https://github.com/madebymlai/Examina.git
+# Install qupled-core from public repo
+RUN pip install git+https://github.com/madebymlai/Qupled.git
 
 # Copy application
 COPY . .

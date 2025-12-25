@@ -102,16 +102,16 @@ The system renders the graph in multiple formats for different use cases.
 
 ```bash
 # View concept graph for a course (ASCII format)
-examina concept-graph --course B006807
+qupled concept-graph --course B006807
 
 # Export as Mermaid diagram
-examina concept-graph --course B006807 --format mermaid --export concept_graph.mmd
+qupled concept-graph --course B006807 --format mermaid --export concept_graph.mmd
 
 # Export as JSON
-examina concept-graph --course B006807 --format json --export concept_graph.json
+qupled concept-graph --course B006807 --format json --export concept_graph.json
 
 # Show learning path to specific concept
-examina concept-graph --course B006807 --concept eigenvalues
+qupled concept-graph --course B006807 --concept eigenvalues
 ```
 
 ### Options
@@ -127,7 +127,7 @@ examina concept-graph --course B006807 --concept eigenvalues
 ### Linear Algebra (Math)
 
 ```bash
-examina concept-graph --course B006807
+qupled concept-graph --course B006807
 ```
 
 **Output:**
@@ -199,7 +199,7 @@ Recommended Starting Points:
 ### Computer Architecture (CS)
 
 ```bash
-examina concept-graph --course B006802
+qupled concept-graph --course B006802
 ```
 
 The system correctly identifies relationships like:
@@ -211,7 +211,7 @@ The system correctly identifies relationships like:
 ### Learning Path
 
 ```bash
-examina concept-graph --course B006807 --concept diagonalization
+qupled concept-graph --course B006807 --concept diagonalization
 ```
 
 **Output:**
@@ -236,7 +236,7 @@ You need to learn 5 concept(s) first:
 Export to Mermaid for web visualization:
 
 ```bash
-examina concept-graph --course B006807 --format mermaid --export graph.mmd
+qupled concept-graph --course B006807 --format mermaid --export graph.mmd
 ```
 
 **Output (graph.mmd):**
@@ -276,7 +276,7 @@ View at: https://mermaid.live/
 Export as JSON for web applications:
 
 ```bash
-examina concept-graph --course B006807 --format json --export graph.json
+qupled concept-graph --course B006807 --format json --export graph.json
 ```
 
 **Output Structure:**
@@ -432,7 +432,7 @@ Cycles indicate either:
 In the future, the `learn` command could show prerequisites:
 
 ```bash
-examina learn --course B006807 --loop eigenvalues_computation
+qupled learn --course B006807 --loop eigenvalues_computation
 ```
 
 **Output:**

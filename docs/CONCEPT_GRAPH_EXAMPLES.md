@@ -386,44 +386,44 @@ function CourseDashboard({ courseCode }) {
 
 ```bash
 # 1. View concept graph
-examina concept-graph --course B006807
+qupled concept-graph --course B006807
 
 # 2. Identify foundation concepts
 # Output shows: "Vector Spaces" is the starting point
 
 # 3. Learn the foundation
-examina learn --course B006807 --loop vector_spaces_basics
+qupled learn --course B006807 --loop vector_spaces_basics
 
 # 4. Check progress
-examina analytics --course B006807
+qupled analytics --course B006807
 
 # 5. View learning path to target concept
-examina concept-graph --course B006807 --concept eigenvalues
+qupled concept-graph --course B006807 --concept eigenvalues
 
 # 6. Work through prerequisites in order
-examina quiz --course B006807 --concept linear_transformations
+qupled quiz --course B006807 --concept linear_transformations
 
 # 7. Export graph for notes
-examina concept-graph --course B006807 --format mermaid --export notes/al_concepts.mmd
+qupled concept-graph --course B006807 --format mermaid --export notes/al_concepts.mmd
 ```
 
 ### Instructor Workflow
 
 ```bash
 # 1. Generate concept graph for course
-examina concept-graph --course B006807 --format json --export course_graph.json
+qupled concept-graph --course B006807 --format json --export course_graph.json
 
 # 2. Check for cycles (potential curriculum issues)
-examina concept-graph --course B006807 | grep "Cycle"
+qupled concept-graph --course B006807 | grep "Cycle"
 
 # 3. Export visualization for syllabus
-examina concept-graph --course B006807 --format mermaid --export syllabus/prerequisites.mmd
+qupled concept-graph --course B006807 --format mermaid --export syllabus/prerequisites.mmd
 
 # 4. Analyze concept coverage
-examina analytics --course B006807 --concepts
+qupled analytics --course B006807 --concepts
 
 # 5. Identify bottleneck concepts
-examina concept-graph --course B006807 --format json | jq '.concepts[] | select(.level > 3)'
+qupled concept-graph --course B006807 --format json | jq '.concepts[] | select(.level > 3)'
 ```
 
 ## Summary

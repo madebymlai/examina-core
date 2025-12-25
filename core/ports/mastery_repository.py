@@ -4,8 +4,8 @@ This interface enables dependency inversion - the ProgressAnalyzer
 depends on this abstraction rather than concrete implementations.
 
 Implementations:
-- SQLiteMasteryRepository: For examina CLI (uses existing Database class)
-- PostgresMasteryRepository: For examina-cloud (uses SQLAlchemy async)
+- SQLiteMasteryRepository: For qupled CLI (uses existing Database class)
+- PostgresMasteryRepository: For qupled-cloud (uses SQLAlchemy async)
 """
 
 from abc import ABC, abstractmethod

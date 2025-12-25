@@ -11,8 +11,8 @@ Implementation was complete and tested successfully, but lost due to accidental 
 - Context summaries applied to sub-questions
 
 ## Files to Modify
-- `/home/laimk/git/examina/core/exercise_splitter.py`
-- `/home/laimk/git/examina/models/llm_manager.py` (already done - default provider = deepseek)
+- `/home/laimk/git/qupled/core/exercise_splitter.py`
+- `/home/laimk/git/qupled/models/llm_manager.py` (already done - default provider = deepseek)
 
 ---
 
@@ -518,7 +518,7 @@ Returns:
 After implementation, test with:
 
 ```bash
-cd /home/laimk/git/examina && python3 << 'EOF'
+cd /home/laimk/git/qupled && python3 << 'EOF'
 import logging
 logging.basicConfig(level=logging.INFO, format='%(name)s: %(message)s')
 
@@ -527,7 +527,7 @@ from core.pdf_processor import PDFProcessor
 from core.exercise_splitter import ExerciseSplitter
 from models.llm_manager import LLMManager
 
-pdf_path = Path("/home/laimk/git/examina-cloud/test-data/SO-ESAMI/SOgennaio2020.pdf")
+pdf_path = Path("/home/laimk/git/qupled-cloud/test-data/SO-ESAMI/SOgennaio2020.pdf")
 processor = PDFProcessor()
 splitter = ExerciseSplitter()
 llm = LLMManager()

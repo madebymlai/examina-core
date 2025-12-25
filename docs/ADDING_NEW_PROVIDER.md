@@ -1,6 +1,6 @@
 # Adding a New LLM Provider with Rate Limiting
 
-This guide shows how to add a new LLM provider to Examina with full rate limiting support. The system is designed to be **provider-agnostic**, requiring only configuration changes.
+This guide shows how to add a new LLM provider to Qupled with full rate limiting support. The system is designed to be **provider-agnostic**, requiring only configuration changes.
 
 ## Step-by-Step Guide
 
@@ -258,10 +258,10 @@ def generate(self, prompt: str, ...) -> LLMResponse:
 export COHERE_API_KEY=your_key_here
 
 # Use with any command
-examina analyze --course B006802 --provider cohere
+qupled analyze --course B006802 --provider cohere
 
 # Check rate limits
-examina rate-limits --provider cohere
+qupled rate-limits --provider cohere
 ```
 
 **Done!** Rate limiting works automatically with zero additional code.
@@ -348,7 +348,7 @@ After adding a provider, verify:
 - [ ] Environment variable overrides work (optional)
 - [ ] API key configuration added
 - [ ] API implementation returns token counts in metadata
-- [ ] Rate limiting works: `examina rate-limits --provider my_provider`
+- [ ] Rate limiting works: `qupled rate-limits --provider my_provider`
 - [ ] Throttling occurs when limits exceeded (test with many requests)
 - [ ] No hardcoded logic added to rate_limiter.py
 
@@ -356,7 +356,7 @@ After adding a provider, verify:
 
 If you run into issues:
 
-1. Check configuration: `examina rate-limits`
+1. Check configuration: `qupled rate-limits`
 2. Test with small limits to verify throttling
 3. Check logs for rate limit messages
 4. Verify token counts are being tracked

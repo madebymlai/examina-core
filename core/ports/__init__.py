@@ -1,6 +1,6 @@
-"""Ports (interfaces) for examina-core dependency inversion.
+"""Ports (interfaces) for qupled-core dependency inversion.
 
-These abstract interfaces define how examina-core accesses data,
+These abstract interfaces define how qupled-core accesses data,
 allowing different implementations for different environments
 (SQLite for CLI, PostgreSQL for web, etc.).
 """

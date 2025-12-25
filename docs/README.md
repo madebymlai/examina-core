@@ -1,6 +1,6 @@
-# Examina Documentation
+# Qupled Documentation
 
-This directory contains detailed documentation for Examina's development and implementation.
+This directory contains detailed documentation for Qupled's development and implementation.
 
 ## Structure
 

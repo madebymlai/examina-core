@@ -1,5 +1,5 @@
 """
-PDF processing for Examina.
+PDF processing for Qupled.
 Extracts text, images, and LaTeX from exam PDFs.
 Supports Mathpix and Vision LLM for math-heavy and scanned PDFs.
 """

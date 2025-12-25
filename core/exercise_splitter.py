@@ -1,5 +1,5 @@
 """
-Exercise splitting for Examina.
+Exercise splitting for Qupled.
 Splits PDF content into individual exercises based on patterns.
 """
 

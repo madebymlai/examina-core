@@ -1,4 +1,4 @@
-# Examina Scripts
+# Qupled Scripts
 
 This directory contains development, testing, and debugging scripts.
 

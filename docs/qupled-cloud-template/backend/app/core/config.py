@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # Database
-    DATABASE_URL: str = "postgresql://examina:examina@localhost:5432/examina"
+    DATABASE_URL: str = "postgresql://qupled:qupled@localhost:5432/qupled"
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"

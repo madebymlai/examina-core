@@ -147,7 +147,7 @@ class ActiveClassifier:
     Active learning-powered item classifier.
 
     Learns from past LLM decisions to reduce future LLM calls.
-    Training data is examina-wide (features are anonymous).
+    Training data is qupled-wide (features are anonymous).
     Transitive graph is per-session (item relationships).
     """
 

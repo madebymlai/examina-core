@@ -4,7 +4,7 @@ This module provides:
 - Exercise generation based on knowledge items + linked exercises
 - Answer evaluation with partial credit
 
-Used by examina-cloud for Review Mode v2.
+Used by qupled-cloud for Review Mode v2.
 """
 
 import json

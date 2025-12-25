@@ -4,7 +4,7 @@
 Restructure exercise splitting to use parallel LLM calls per exercise, with `has_sub_questions` flag in Call 2 to skip unnecessary calls for standalone exercises. Reduces round trips from ~17 sequential to ~5 parallel.
 
 ## Files to Modify
-- `/home/laimk/git/examina/core/exercise_splitter.py` - all changes
+- `/home/laimk/git/qupled/core/exercise_splitter.py` - all changes
 
 ## Final Flow
 

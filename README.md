@@ -1,14 +1,14 @@
-# Examina Core
+# Qupled Core
 
 Lightweight business logic for AI-powered exam preparation.
 
 ## Architecture
 
 ```
-examina (this repo)   - Core logic, no heavy deps
+qupled (this repo)   - Core logic, no heavy deps
     ↓ imported by
-examina-cloud         - Web platform (FastAPI + React + PostgreSQL)
-examina-cli           - Local CLI (ChromaDB, vector search)
+qupled-cloud         - Web platform (FastAPI + React + PostgreSQL)
+qupled-cli           - Local CLI (ChromaDB, vector search)
 ```
 
 **Rule**: Cloud and CLI import from core, never reimplement.
@@ -33,7 +33,7 @@ examina-cli           - Local CLI (ChromaDB, vector search)
 ## Installation
 
 ```bash
-pip install git+https://github.com/madebymlai/examina.git
+pip install git+https://github.com/madebymlai/qupled.git
 ```
 
 ## Usage
@@ -94,5 +94,5 @@ next_review_date = review_result.next_review_date
 
 ## Related
 
-- [examina-cloud](https://github.com/madebymlai/examina-cloud) - Web platform
-- [examina-cli](https://github.com/madebymlai/examina-cli) - Local CLI
+- [qupled-cloud](https://github.com/madebymlai/qupled-cloud) - Web platform
+- [qupled-cli](https://github.com/madebymlai/qupled-cli) - Local CLI

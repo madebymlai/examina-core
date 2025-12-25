@@ -45,7 +45,7 @@ class FSRSScheduler:
     """
     FSRS spaced repetition scheduler.
 
-    Wraps the fsrs library to provide a clean interface for Examina.
+    Wraps the fsrs library to provide a clean interface for Qupled.
     Uses default FSRS parameters (will be optimized from ReviewLog data later).
     """
 

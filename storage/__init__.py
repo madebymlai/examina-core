@@ -1,5 +1,5 @@
 """
-Examina Storage - Database management.
+Qupled Storage - Database management.
 """
 
 from storage.database import Database

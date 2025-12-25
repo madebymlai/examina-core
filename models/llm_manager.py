@@ -1,5 +1,5 @@
 """
-LLM Manager for Examina.
+LLM Manager for Qupled.
 Handles interactions with Ollama and other LLM providers.
 """
 
@@ -40,7 +40,7 @@ class LLMResponse:
 
 
 class LLMManager:
-    """Manages LLM interactions for Examina."""
+    """Manages LLM interactions for Qupled."""
 
     def __init__(
         self, provider: str = "deepseek", base_url: Optional[str] = None, quiet: bool = False
@@ -1401,8 +1401,8 @@ class LLMManager:
                 headers = {
                     "Authorization": f"Bearer {Config.OPENROUTER_API_KEY}",
                     "Content-Type": "application/json",
-                    "HTTP-Referer": "https://examina.io",
-                    "X-Title": "Examina",
+                    "HTTP-Referer": "https://qupled.io",
+                    "X-Title": "Qupled",
                 }
 
                 response = requests.post(url, json=payload, headers=headers, timeout=120)
@@ -1540,8 +1540,8 @@ class LLMManager:
                 headers = {
                     "Authorization": f"Bearer {Config.OPENROUTER_API_KEY}",
                     "Content-Type": "application/json",
-                    "HTTP-Referer": "https://examina.io",
-                    "X-Title": "Examina",
+                    "HTTP-Referer": "https://qupled.io",
+                    "X-Title": "Qupled",
                 }
 
                 timeout = aiohttp.ClientTimeout(total=120)
@@ -1890,8 +1890,8 @@ class LLMManager:
                 headers = {
                     "Authorization": f"Bearer {Config.OPENROUTER_API_KEY}",
                     "Content-Type": "application/json",
-                    "HTTP-Referer": "https://examina.io",
-                    "X-Title": "Examina",
+                    "HTTP-Referer": "https://qupled.io",
+                    "X-Title": "Qupled",
                 }
 
                 response = requests.post(url, json=payload, headers=headers, timeout=120)
@@ -1982,8 +1982,8 @@ class LLMManager:
                 headers = {
                     "Authorization": f"Bearer {Config.OPENROUTER_API_KEY}",
                     "Content-Type": "application/json",
-                    "HTTP-Referer": "https://examina.io",
-                    "X-Title": "Examina",
+                    "HTTP-Referer": "https://qupled.io",
+                    "X-Title": "Qupled",
                 }
 
                 response = requests.post(url, json=payload, headers=headers, timeout=120)

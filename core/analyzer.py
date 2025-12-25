@@ -1,5 +1,5 @@
 """
-AI-powered exercise analyzer for Examina.
+AI-powered exercise analyzer for Qupled.
 Extracts knowledge items from exercises for spaced repetition learning.
 """
 

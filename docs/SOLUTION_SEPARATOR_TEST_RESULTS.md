@@ -114,18 +114,18 @@ Conclusion: Question-only (solution is on separate page/image)
 
 ```bash
 # Preview what would be separated (dry-run, default)
-examina separate-solutions --course B006818
+qupled separate-solutions --course B006818
 
 # Actually apply the separation
-examina separate-solutions --course B006818 --no-dry-run
+qupled separate-solutions --course B006818 --no-dry-run
 
 # Adjust confidence threshold (default: 0.5)
-examina separate-solutions --course B006818 --confidence-threshold 0.7
+qupled separate-solutions --course B006818 --confidence-threshold 0.7
 ```
 
 ## Conclusion
 
-The solution separator successfully handles the "exam files with solutions" requirement from TODO.md. It works generically across languages and formats with no hardcoding, maintaining Examina's design philosophy.
+The solution separator successfully handles the "exam files with solutions" requirement from TODO.md. It works generically across languages and formats with no hardcoding, maintaining Qupled's design philosophy.
 
 **Status:** ✅ Production Ready
 

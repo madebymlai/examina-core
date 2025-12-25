@@ -2,7 +2,7 @@
 
 ## Your Course Materials Stay Yours
 
-Examina analyzes the materials you upload (past exams, homework, problem sets, lecture notes) to build a private knowledge base and tutor for you only. We don't share your materials or generated questions with other users.
+Qupled analyzes the materials you upload (past exams, homework, problem sets, lecture notes) to build a private knowledge base and tutor for you only. We don't share your materials or generated questions with other users.
 
 ## What Happens When You Upload Course Materials
 
@@ -24,7 +24,7 @@ When using external LLM providers (Anthropic, Groq, OpenAI), your exam content i
 
 ## Data Retention
 
-- **Course Material PDFs**: Stored in your local database (`data/examina.db`) until you delete them
+- **Course Material PDFs**: Stored in your local database (`data/qupled.db`) until you delete them
 - **Analysis Cache**: LLM responses are cached locally to save API costs and improve performance
 - **Quiz History**: Your quiz attempts and progress are stored locally
 - **Rate Limit Tracking**: API usage is tracked locally in cache files
@@ -36,17 +36,17 @@ You have the right to:
 1. **Access**: View all your stored data in the SQLite database
 2. **Delete**: Remove any course, exercise, or analysis data
 3. **Export**: Extract your data from the database
-4. **Use Locally**: Run Examina entirely offline with Ollama (no cloud API)
+4. **Use Locally**: Run Qupled entirely offline with Ollama (no cloud API)
 
 ## Data Security
 
 - **Local Storage**: All data is stored in SQLite database on your machine
 - **API Keys**: Your API keys are stored in environment variables, not in code
-- **No Cloud Storage**: Examina is currently a CLI tool - all data stays on your computer
+- **No Cloud Storage**: Qupled is currently a CLI tool - all data stays on your computer
 
 ## Future Web Application
 
-When Examina becomes a web application:
+When Qupled becomes a web application:
 
 - This privacy policy will be updated to reflect web-based storage
 - User accounts will be separate and isolated
@@ -56,7 +56,7 @@ When Examina becomes a web application:
 ## Contact
 
 For privacy-related questions or concerns:
-- Open an issue: https://github.com/madebymlai/Examina/issues
+- Open an issue: https://github.com/madebymlai/Qupled/issues
 - Email: mikhail@laimk.dev
 
 ---

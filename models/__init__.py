@@ -1,5 +1,5 @@
 """
-Examina Models - LLM provider integrations.
+Qupled Models - LLM provider integrations.
 """
 
 from models.llm_manager import LLMManager

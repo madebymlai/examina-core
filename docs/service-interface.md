@@ -1,8 +1,8 @@
-# ExaminaService - Service Layer for SaaS Readiness
+# QupledService - Service Layer for SaaS Readiness
 
 ## Overview
 
-The `ExaminaService` class provides a stateless service interface for Examina's core operations, designed to enable easy integration with web frameworks (FastAPI/Flask) while maintaining all business logic in the core layer.
+The `QupledService` class provides a stateless service interface for Qupled's core operations, designed to enable easy integration with web frameworks (FastAPI/Flask) while maintaining all business logic in the core layer.
 
 ## Architecture
 
@@ -16,10 +16,10 @@ The `ExaminaService` class provides a stateless service interface for Examina's 
 ### Service Interface Pattern
 
 ```python
-from core.service import ExaminaService, ServiceResult
+from core.service import QupledService, ServiceResult
 
 # Create service with user's preferred provider
-service = ExaminaService(provider="anthropic", language="en")
+service = QupledService(provider="anthropic", language="en")
 
 # Call service methods - all return ServiceResult
 result = service.learn_core_loop(
@@ -39,16 +39,16 @@ All CLI commands that use LLM now support the `--provider` flag:
 
 ```bash
 # Use default provider from config
-examina learn -c CS101 -l binary_search
+qupled learn -c CS101 -l binary_search
 
 # Override with specific provider
-examina learn -c CS101 -l binary_search --provider groq
+qupled learn -c CS101 -l binary_search --provider groq
 
 # Works with all commands
-examina practice -c CS101 --provider anthropic
-examina prove -c MATH101 --provider ollama
-examina quiz -c CS101 --provider openai
-examina generate -c CS101 -l merge_sort --provider groq
+qupled practice -c CS101 --provider anthropic
+qupled prove -c MATH101 --provider ollama
+qupled quiz -c CS101 --provider openai
+qupled generate -c CS101 -l merge_sort --provider groq
 ```
 
 ### Commands with --provider Support
@@ -68,7 +68,7 @@ examina generate -c CS101 -l merge_sort --provider groq
 
 ```python
 from fastapi import FastAPI, Depends, HTTPException
-from core.service import ExaminaService, ServiceResult
+from core.service import QupledService, ServiceResult
 from typing import Optional
 
 app = FastAPI()
@@ -77,9 +77,9 @@ app = FastAPI()
 def get_service(
     provider: Optional[str] = None,
     language: str = "en"
-) -> ExaminaService:
+) -> QupledService:
     """Create service instance with user preferences."""
-    return ExaminaService(provider=provider, language=language)
+    return QupledService(provider=provider, language=language)
 
 # Endpoint example
 @app.post("/api/courses/{course_code}/learn/{loop_id}")
@@ -87,7 +87,7 @@ async def learn_endpoint(
     course_code: str,
     loop_id: str,
     provider: Optional[str] = None,
-    service: ExaminaService = Depends(get_service)
+    service: QupledService = Depends(get_service)
 ) -> ServiceResult:
     """Learn a core loop with AI tutor."""
     return service.learn_core_loop(course_code, loop_id)
@@ -97,7 +97,7 @@ async def practice_endpoint(
     course_code: str,
     topic: Optional[str] = None,
     difficulty: Optional[str] = None,
-    service: ExaminaService = Depends(get_service)
+    service: QupledService = Depends(get_service)
 ) -> ServiceResult:
     """Get practice exercise."""
     return service.practice_exercise(course_code, topic, difficulty)
@@ -106,7 +106,7 @@ async def practice_endpoint(
 async def start_quiz(
     course_code: str,
     length: int = 10,
-    service: ExaminaService = Depends(get_service)
+    service: QupledService = Depends(get_service)
 ) -> ServiceResult:
     """Start a new quiz session."""
     return service.start_quiz(course_code, length=length)
@@ -124,7 +124,7 @@ async def learn(
     current_user: User = Depends(get_current_user)
 ):
     # Each user can have their own provider preference
-    service = ExaminaService(
+    service = QupledService(
         provider=current_user.preferred_llm_provider,
         language=current_user.preferred_language
     )
@@ -190,7 +190,7 @@ This format is:
 ## Migration Path
 
 ### Phase 1: Service Layer (✓ Complete)
-- Created `ExaminaService` class in `core/service.py`
+- Created `QupledService` class in `core/service.py`
 - Added `--provider` flag to all LLM-using commands
 - Updated commands to use provider parameter
 
@@ -239,7 +239,7 @@ Service methods can be easily tested:
 ```python
 def test_learn_core_loop():
     # Create service with test provider
-    service = ExaminaService(provider="ollama")
+    service = QupledService(provider="ollama")
 
     # Call service method
     result = service.learn_core_loop("CS101", "binary_search")
@@ -256,11 +256,11 @@ Provider selection follows this priority:
 
 1. Explicit `--provider` flag (highest priority)
 2. User preference in web API
-3. Environment variable `EXAMINA_LLM_PROVIDER`
+3. Environment variable `QUPLED_LLM_PROVIDER`
 4. Config file default (lowest priority)
 
 This allows flexibility while maintaining sensible defaults.
 
 ## Conclusion
 
-The service layer makes Examina ready for SaaS deployment while maintaining backward compatibility with the CLI. All business logic remains in the core layer, and the service provides a clean, stateless interface that's easy to integrate with any web framework.
+The service layer makes Qupled ready for SaaS deployment while maintaining backward compatibility with the CLI. All business logic remains in the core layer, and the service provides a clean, stateless interface that's easy to integrate with any web framework.
