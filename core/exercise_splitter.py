@@ -374,6 +374,8 @@ async def _analyze_exercise(
   - Solutions or answer sections
   - Page headers/footers
   - Junk text between exercises
+  - Exam-wide instructions or reminders
+  - General exam rules
 
 - has_sub_questions = **true** if exercise contains **SEPARATE tasks** requiring **SEPARATE answers**
   - Can be marked: a), b), c), 1., 2., i), ii), -, •
