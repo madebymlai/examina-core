@@ -1,6 +1,8 @@
 # Qupled Core
 
-Lightweight business logic for AI-powered exam preparation.
+[![Website](https://img.shields.io/badge/Try_Qupled-qupled.com-blue)](https://qupled.com)
+
+Lightweight business logic for [Qupled](https://qupled.com) - AI-powered study app with spaced repetition and smart flashcards.
 
 ## Architecture
 
@@ -94,5 +96,5 @@ next_review_date = review_result.next_review_date
 
 ## Related
 
-- [qupled-cloud](https://github.com/madebymlai/qupled-cloud) - Web platform
+- **[qupled.com](https://qupled.com)** - Try the web app
 - [qupled-cli](https://github.com/madebymlai/qupled-cli) - Local CLI
