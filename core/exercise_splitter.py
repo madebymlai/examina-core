@@ -553,8 +553,15 @@ async def _get_sub_end_marker_for_sub(
     llm_manager: "LLMManager",
 ) -> Tuple[str, Optional[str]]:
     """Call 4: Get end marker for one sub-question."""
-    prompt = f"""Identify where this sub-question **ENDS**.
-Return the **last 30-50 characters** of the actual question (**BEFORE** any trailing junk like page numbers, form fields, next sub-question markers).
+    prompt = f"""Identify the **end_marker**: LAST 30-50 characters of the sub-question.
+
+**CRITICAL**: end_marker should be at the **END** of the question content, **BEFORE** any:
+  - Form fields or blank lines for answers
+  - Solutions or answer sections
+  - Page headers/footers
+  - Junk text between exercises
+  - Exam-wide instructions or reminders
+  - General exam rules
 
 SUB-QUESTION:
 \"\"\"
@@ -562,9 +569,7 @@ SUB-QUESTION:
 \"\"\"
 
 Return JSON:
-{{"end_marker": "last 30-50 chars verbatim"}}
-
-**IMPORTANT**: end_marker must be **EXACT** text, used to find where to trim."""
+{{"end_marker": "last 30-50 chars verbatim of sub-question"}}"""
 
     try:
 
