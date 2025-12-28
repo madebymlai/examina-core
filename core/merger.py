@@ -401,11 +401,12 @@ def regenerate_description(
     if len(descriptions) == 1:
         return descriptions[0]
 
-    prompt = f"""Pick the most representative skill description:
+    numbered = "\n".join(f"{i+1}. {d}" for i, d in enumerate(descriptions))
+    prompt = f"""Pick the description that best encapsulates the skill (clearest, most concise, uses standard terminology):
 
-{chr(10).join(f"- {d}" for d in descriptions)}
+{numbered}
 
-Return JSON: {{"description": "..."}}"""
+Return JSON: {{"pick": <number>}}"""
 
     try:
         response = llm.generate(
@@ -417,7 +418,9 @@ Return JSON: {{"description": "..."}}"""
         )
         if response and response.text:
             result = json.loads(response.text)
-            return result.get("description", max(descriptions, key=len))
+            pick = int(result.get("pick", 1)) - 1  # Convert to 0-indexed
+            if 0 <= pick < len(descriptions):
+                return descriptions[pick]
         return max(descriptions, key=len)
     except Exception as e:
         logger.warning(f"Description selection failed: {e}")
@@ -443,22 +446,24 @@ def get_canonical_name(
     if len(group_names) == 1:
         return group_names[0]
 
-    prompt = f"""Pick the most descriptive name from: {json.dumps(group_names)}
+    # Show Title Case to LLM for readability, return snake_case
+    display_names = [snake_to_title(n) for n in group_names]
+    numbered = "\n".join(f"{i+1}. {n}" for i, n in enumerate(display_names))
+    prompt = f"""Pick the name that best represents this skill (clearest, most descriptive, uses standard terminology):
 
-Return JSON: {{"canonical": "chosen_name"}}"""
+{numbered}
+
+Return JSON: {{"pick": <number>}}"""
 
     try:
         response = llm.generate(prompt=prompt, temperature=0.0, json_mode=True)
 
         if response and response.text:
             result = json.loads(response.text)
-            canonical_name = result.get("canonical", group_names[0])
-            # Validate canonical is in group
-            if canonical_name not in group_names:
-                canonical_name = group_names[0]
-            return canonical_name
-        else:
-            return group_names[0]
+            pick = int(result.get("pick", 1)) - 1  # Convert to 0-indexed
+            if 0 <= pick < len(group_names):
+                return group_names[pick]  # Return snake_case
+        return group_names[0]
 
     except Exception as e:
         logger.warning(f"Canonical selection failed: {e}, using first name")
