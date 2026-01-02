@@ -79,6 +79,7 @@ class Config:
 
     # OpenRouter Settings (vision + image generation)
     OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "google/gemini-2.0-flash-001")
+    OPENROUTER_VLM_MODEL = os.getenv("OPENROUTER_VLM_MODEL", "qwen/qwen3-vl-235b-a22b-instruct")
     OPENROUTER_IMAGE_MODEL = os.getenv("OPENROUTER_IMAGE_MODEL", "black-forest-labs/flux-2-pro")
 
     # Processing Settings
