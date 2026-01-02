@@ -35,7 +35,17 @@ __all__ = [
 
 
 def get_pdf_page_count(pdf_path: Path) -> int:
-    """Get the number of pages in a PDF."""
+    """Get the number of pages in a PDF.
+
+    Args:
+        pdf_path: Path to PDF file
+
+    Returns:
+        Number of pages in the PDF
+
+    Raises:
+        FileNotFoundError: If PDF not found
+    """
     return PDFProcessor().get_pdf_page_count(pdf_path)
 
 
